@@ -15,8 +15,7 @@ It delivers a scalable message queue without needing to integrate/maintain addit
 
 #### Initialization
 
-The gq client is initialized by passing it DB connection parameters and a protobuf schema.
-The protobuf schema defines the encoding of message payloads.
+The gq client is initialized by passing it DB connection parameters.
 
 ### Producers
 
