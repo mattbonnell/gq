@@ -22,3 +22,16 @@ func New(db *sqlx.DB) (*Client, error) {
 	log.Debug().Msg("client created")
 	return &c, nil
 }
+
+func (c Client) NewConsumer(process func(m *Message) error) (*Consumer, error) {
+	consumer := &Consumer{db: c.db, processFunc: process}
+	if err := consumer.register(); err != nil {
+		return nil, err
+	}
+	go func(c *Consumer) {
+		if err := c.startKeepAlive(); err != nil {
+			log.Error().Msgf("keep alive failed: %s", err)
+		}
+	}(consumer)
+	return consumer, nil
+}
