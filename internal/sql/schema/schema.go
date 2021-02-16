@@ -2,6 +2,7 @@ package schema
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/mattbonnell/gq/internal/sql/schema/mysql"
@@ -20,10 +21,22 @@ func getSchema(db *sqlx.DB) []string {
 	}
 }
 
-func CreateSchema(db *sqlx.DB) {
+func CreateSchema(db *sqlx.DB) error {
 	log.Debug().Msg("creating schema")
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin tx: %s", err)
+	}
+	defer tx.Rollback()
 	for _, stmt := range getSchema(db) {
-		db.MustExec(stmt)
+		_, err := tx.Exec(stmt)
+		if err != nil {
+			return fmt.Errorf("failed to exec stmt %s: %s", strings.Split(stmt, "(")[0], err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit tx: %s", err)
 	}
 	log.Debug().Msg("schema created")
+	return nil
 }
