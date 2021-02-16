@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/mattbonnell/gq/pkg/sql/schema/mysql"
-	"github.com/mattbonnell/gq/pkg/sql/schema/sqlite3"
+	"github.com/mattbonnell/gq/internal/sql/schema/mysql"
+	"github.com/mattbonnell/gq/internal/sql/schema/sqlite3"
 	"github.com/rs/zerolog/log"
 )
 

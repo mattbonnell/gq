@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+const (
+	MessageStatusQueued uint8 = iota
+	MessageStatusConsumed
+	MessageStatusProcessed
+	MessageStatusFailed
+)
+
 type AutoIncr struct {
 	ID      uint64
 	Created time.Time
