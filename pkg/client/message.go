@@ -6,30 +6,17 @@ import (
 	"github.com/mattbonnell/gq/internal/sql"
 )
 
-type Message interface {
-	ID() uint64
-	Payload() []byte
+type Message struct {
+	ID      uint64
+	Payload []byte
 }
 
-type message struct {
-	id      uint64
-	payload []byte
-}
-
-func (m message) ID() uint64 {
-	return m.id
-}
-
-func (m message) Payload() []byte {
-	return m.payload
-}
-
-func FromSQL(m *sql.Message) (Message, error) {
+func FromSQL(m *sql.Message) (*Message, error) {
 	p := []byte(m.Payload)
-	msg := message{payload: make([]byte, len(p))}
-	if n := copy(msg.payload, p); n < len(p) {
+	msg := Message{Payload: make([]byte, len(p))}
+	if n := copy(msg.Payload, p); n < len(p) {
 		return nil, errors.New("failed to copy the message's full payload")
 	}
-	msg.id = m.ID
+	msg.ID = m.ID
 	return &msg, nil
 }

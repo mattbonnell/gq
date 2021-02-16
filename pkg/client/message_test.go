@@ -15,8 +15,8 @@ func TestMessageFromSQL_StringPayload(t *testing.T) {
 	m, err := FromSQL(&s)
 	require.NoError(t, err)
 	s.Payload = []byte("something else")
-	require.Equal(t, p, m.Payload())
-	require.Equal(t, s.ID, m.ID())
+	require.Equal(t, p, m.Payload)
+	require.Equal(t, s.ID, m.ID)
 }
 
 func TestMessageFromSQL_EmptyPayload(t *testing.T) {
@@ -24,5 +24,5 @@ func TestMessageFromSQL_EmptyPayload(t *testing.T) {
 	s.Payload = make([]byte, 0)
 	m, err := FromSQL(&s)
 	require.NoError(t, err)
-	require.Equal(t, []byte(s.Payload), m.Payload())
+	require.Equal(t, []byte(s.Payload), m.Payload)
 }
