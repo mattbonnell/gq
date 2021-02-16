@@ -8,7 +8,6 @@ CREATE TABLE message (
 	payload BLOB,
 	consumer_id INT UNSIGNED,
 	created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-	updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 	INDEX id_status (id, status),
 	INDEX id_consumer (id, consumer),
 );`
@@ -22,8 +21,4 @@ CREATE TABLE consumer (
 );`
 )
 
-var schema = []string{message, consumer}
-
-func TableSchemas() []string {
-	return schema
-}
+var Schema = []string{message, consumer}
