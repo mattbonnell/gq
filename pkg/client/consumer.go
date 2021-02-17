@@ -133,6 +133,10 @@ func (c *Consumer) pullMessages() error {
 			return fmt.Errorf("error retrieving claimed batch subset: %s", err)
 		}
 	}
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("error committing pull tx: %s", err)
+	}
 
 	c.currentMsgBatch = m
 	return nil
