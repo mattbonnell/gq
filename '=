@@ -142,6 +142,10 @@ func (c *Consumer) pullMessages(now time.Time) error {
 	}
 	defer rows.Close()
 	log.Debug().Msg("committing pullMessages tx")
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("error committing pull tx: %s", err)
+	}
 
 	log.Debug().Msg("delivering messages")
 	for rows.Next() {
@@ -156,14 +160,9 @@ func (c *Consumer) pullMessages(now time.Time) error {
 		}
 		log.Debug().Msgf("delivering message %d", m.ID)
 		c.msgChan <- m
-		log.Debug().Msgf("delivered message %d", m.ID)
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("error with message results object: %s", err)
-	}
-	err = tx.Commit()
-	if err != nil {
-		return fmt.Errorf("error committing pull tx: %s", err)
 	}
 	return nil
 }
