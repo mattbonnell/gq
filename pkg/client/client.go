@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/mattbonnell/gq/internal/sql/schema"
 	"github.com/rs/zerolog/log"
 )
 
@@ -14,8 +15,8 @@ type Client struct {
 func New(db *sqlx.DB) (*Client, error) {
 	log.Debug().Msg("creating new client")
 	c := Client{db: db}
-	if err := c.db.Ping(); err != nil {
-		err = fmt.Errorf("couldn't connect to db: %s", err)
+	if err := schema.Create(c.db); err != nil {
+		err = fmt.Errorf("error creating schema: %s", err)
 		log.Debug().Msg(err.Error())
 		return nil, err
 	}

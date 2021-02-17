@@ -21,7 +21,7 @@ func getSchema(db *sqlx.DB) []string {
 	}
 }
 
-func CreateSchema(db *sqlx.DB) error {
+func Create(db *sqlx.DB) error {
 	log.Debug().Msg("creating schema")
 	tx, err := db.Begin()
 	if err != nil {
