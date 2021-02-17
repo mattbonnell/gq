@@ -133,7 +133,7 @@ func TestPullMessagesShouldSucceed_OneMessage(t *testing.T) {
 
 	mock.ExpectCommit()
 
-	err = c.pullMessages(now)
+	err = c.popMessages(now)
 	require.NoError(t, err)
-	require.Exactly(t, expectedMessage, <-c.Message())
+	require.Exactly(t, expectedMessage, c.Pop())
 }

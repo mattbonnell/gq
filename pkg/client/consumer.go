@@ -27,8 +27,8 @@ type Consumer struct {
 	msgChan chan *Message
 }
 
-func (c Consumer) Message() <-chan *Message {
-	return c.msgChan
+func (c Consumer) Pop() *Message {
+	return <-c.msgChan
 }
 
 func newConsumer(db *sqlx.DB) (*Consumer, error) {
@@ -37,7 +37,7 @@ func newConsumer(db *sqlx.DB) (*Consumer, error) {
 		return nil, err
 	}
 	go c.startKeepAlive()
-	go c.startPullMessages()
+	go c.startPoppingMessages()
 	return c, nil
 }
 
@@ -50,7 +50,7 @@ func (c *Consumer) register() error {
 	if err != nil {
 		return err
 	}
-	c.ID = uint64(id)
+	c.ID = id
 	query := c.db.Rebind("SELECT created FROM consumer WHERE id = ?")
 	return c.db.Get(&c.Created, query, c.ID)
 }
@@ -79,16 +79,16 @@ func (c *Consumer) keepAlive(now time.Time) error {
 	return nil
 }
 
-func (c *Consumer) startPullMessages() {
+func (c *Consumer) startPoppingMessages() {
 	for {
-		if err := backoff.Retry(func() error { return c.pullMessages(time.Now().UTC()) }, backoff.NewExponentialBackOff()); err != nil {
+		if err := backoff.Retry(func() error { return c.popMessages(time.Now().UTC()) }, backoff.NewExponentialBackOff()); err != nil {
 			log.Err(err).Msg("error pulling messages")
 			return
 		}
 	}
 }
 
-func (c *Consumer) pullMessages(now time.Time) error {
+func (c *Consumer) popMessages(now time.Time) error {
 	lastHeartBeatThreshold := now.Add(-time.Second * keepAliveTimeoutSeconds)
 	numConsumersSubQuery := `SELECT count(id) FROM consumer WHERE created < ? AND updated >= ?`
 	birthIndexSubQuery := `SELECT count(id) FROM consumer WHERE id != ? AND created < ? AND updated >= ?`
@@ -108,7 +108,7 @@ func (c *Consumer) pullMessages(now time.Time) error {
 	}
 	log.Debug().Msgf("pulled %d messages in initial batch", len(m))
 
-	mIds := make([]uint64, len(m))
+	mIds := make([]int64, len(m))
 	for i := range m {
 		mIds[i] = m[i].ID
 	}

@@ -1,6 +1,7 @@
 package client
 
 import (
+	go_sql "database/sql"
 	"errors"
 
 	"github.com/mattbonnell/gq/internal/sql"
@@ -14,16 +15,22 @@ const (
 )
 
 type Message struct {
-	ID      uint64
+	ID      int64
 	Payload []byte
 }
 
-func FromSQL(m *sql.Message) (*Message, error) {
-	p := []byte(m.Payload)
+func FromSQL(sqlMessage *sql.Message) (*Message, error) {
+	p := []byte(sqlMessage.Payload)
 	msg := Message{Payload: make([]byte, len(p))}
 	if n := copy(msg.Payload, p); n < len(p) {
 		return nil, errors.New("failed to copy the message's full payload")
 	}
-	msg.ID = m.ID
+	msg.ID = sqlMessage.ID
 	return &msg, nil
+}
+
+func (m Message) ToSQL() *sql.Message {
+	sqlMessage := &sql.Message{Payload: go_sql.RawBytes(m.Payload)}
+	sqlMessage.ID = m.ID
+	return sqlMessage
 }
