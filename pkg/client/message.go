@@ -6,6 +6,13 @@ import (
 	"github.com/mattbonnell/gq/internal/sql"
 )
 
+const (
+	MessageStatusQueued uint8 = iota
+	MessageStatusConsumed
+	MessageStatusProcessed
+	MessageStatusFailed
+)
+
 type Message struct {
 	ID      uint64
 	Payload []byte
