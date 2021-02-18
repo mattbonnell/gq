@@ -2,8 +2,6 @@ package client
 
 import (
 	"context"
-	go_sql "database/sql"
-	"errors"
 	"fmt"
 	"time"
 
@@ -14,156 +12,104 @@ import (
 )
 
 const (
-	keepAliveTimeoutSeconds         = 5
-	keepAliveHeartbeatPeriodSeconds = 2
-	concurrentProcessingGoroutines  = 10
-	pullBatchSize                   = 50
-	consumerIdUnassigned            = 0
+	emptyQueueConstantBackoffDurationSeconds = 5
+	concurrentProcessingGoroutines           = 10
+	pullBatchSize                            = 50
+	consumerIdUnassigned                     = 0
+	processingMaxRetries                     = 3
+	retryInitialBackoffPeriodSeconds         = 2
 )
 
 type Consumer struct {
-	sql.Consumer
-	db      *sqlx.DB
-	msgChan chan *Message
+	db                       *sqlx.DB
+	processFunc              func(m *Message) error
+	failedProcessingBackoffs map[int64]*backoff.BackOff
 }
 
-func (c Consumer) Pop() *Message {
-	return <-c.msgChan
-}
-
-func newConsumer(db *sqlx.DB) (*Consumer, error) {
-	c := &Consumer{db: db, msgChan: make(chan *Message, pullBatchSize)}
-	if err := c.register(); err != nil {
-		return nil, err
+func newConsumer(ctx context.Context, db *sqlx.DB, processFunc func(m *Message) error) (*Consumer, error) {
+	c := &Consumer{db: db, processFunc: processFunc}
+	log.Debug().Msg("pinging database")
+	if err := c.db.Ping(); err != nil {
+		e := fmt.Errorf("error pinging database: %s", err)
+		log.Debug().Err(e)
+		return nil, e
 	}
-	go c.startKeepAlive()
-	go c.startPoppingMessages()
+	go c.startProcessingMessages(ctx)
 	return c, nil
 }
 
-func (c *Consumer) register() error {
-	res, err := c.db.Exec("INSERT INTO consumer")
-	if err != nil {
-		return err
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return err
-	}
-	c.ID = id
-	query := c.db.Rebind("SELECT created FROM consumer WHERE id = ?")
-	return c.db.Get(&c.Created, query, c.ID)
-}
-
-func (c *Consumer) startKeepAlive() {
+func (c *Consumer) startProcessingMessages(ctx context.Context) {
 	for {
-		if err := backoff.Retry(func() error { return c.keepAlive(time.Now().UTC()) }, backoff.NewExponentialBackOff()); err != nil {
-			log.Err(err).Msg("error keeping consumer alive")
-			return
-		}
-		time.Sleep(time.Second * keepAliveHeartbeatPeriodSeconds)
-	}
-}
-
-func (c *Consumer) keepAlive(now time.Time) error {
-	query := c.db.Rebind("UPDATE consumer WHERE id = ? SET updated = ?")
-	res, err := c.db.Exec(query, c.ID, now)
-	if err != nil {
-		return err
-	}
-	if n, err := res.RowsAffected(); err != nil {
-		return err
-	} else if n != 1 {
-		return errors.New("consumer record wasn't updated")
-	}
-	return nil
-}
-
-func (c *Consumer) startPoppingMessages() {
-	for {
-		if err := backoff.Retry(func() error { return c.popMessages(time.Now().UTC()) }, backoff.NewExponentialBackOff()); err != nil {
+		if err := backoff.Retry(func() error { return c.processMessage(ctx) }, backoff.NewConstantBackOff(time.Second*emptyQueueConstantBackoffDurationSeconds)); err != nil {
 			log.Err(err).Msg("error pulling messages")
 			return
 		}
 	}
 }
 
-func (c *Consumer) popMessages(now time.Time) error {
-	lastHeartBeatThreshold := now.Add(-time.Second * keepAliveTimeoutSeconds)
-	numConsumersSubQuery := `SELECT count(id) FROM consumer WHERE created < ? AND updated >= ?`
-	birthIndexSubQuery := `SELECT count(id) FROM consumer WHERE id != ? AND created < ? AND updated >= ?`
-	tx, err := c.db.BeginTxx(context.TODO(), nil)
-	if err != nil {
-		return fmt.Errorf("error creating tx: %s", err)
-	}
+func (c *Consumer) processMessage(ctx context.Context) error {
+	tx, err := c.db.BeginTxx(ctx, nil)
 	defer tx.Rollback()
-	query := tx.Rebind(fmt.Sprintf(`SELECT id FROM message WHERE status = ? AND id %% (%s) = (%s) ORDER BY created ASC LIMIT ?`, numConsumersSubQuery, birthIndexSubQuery))
-	m := []Message{}
-	err = tx.Select(&m, query, MessageStatusQueued, now.Add(time.Second), lastHeartBeatThreshold, c.ID, c.Created, lastHeartBeatThreshold, pullBatchSize)
 	if err != nil {
-		if err == go_sql.ErrNoRows {
+		e := fmt.Errorf("error beginning message pull transaction: %s", err)
+		log.Debug().Err(e)
+		return e
+	}
+	var sqlMessage sql.Message
+	query := tx.Rebind("SELECT id, payload, retries FROM message WHERE retry_backoff_ends <= ? FOR UPDATE SKIP LOCKED ORDER BY created ASC LIMIT 1")
+	if err := tx.QueryRowxContext(ctx, query, time.Now().UTC()).StructScan(&sqlMessage); err != nil {
+		e := fmt.Errorf("error pulling message: %s", err)
+		log.Debug().Err(e)
+		return e
+	}
+	m, err := FromSQL(&sqlMessage)
+	if err != nil {
+		e := fmt.Errorf("error copying message %s", err)
+		log.Debug().Err(e)
+		return e
+	}
+	if err := c.processFunc(m); err != nil {
+		log.Debug().Err(err).Msg("error processing message")
+		if sqlMessage.Retries < processingMaxRetries {
+			query := c.db.Rebind("UPDATE message WHERE id = ? SET retries = ?, retry_backoff_ends = ?")
+			numRetries := sqlMessage.Retries + 1
+			backoffPeriodSeconds := retryInitialBackoffPeriodSeconds * numRetries
+			retryBackoffEnds := time.Now().UTC().Add(time.Second * time.Duration(backoffPeriodSeconds))
+			res, err := tx.ExecContext(ctx, query, sqlMessage.ID, numRetries, retryBackoffEnds)
+			if err != nil {
+				e := fmt.Errorf("error setting next retry backoff: %s", err)
+				log.Debug().Err(e)
+				return e
+			}
+			n, err := res.RowsAffected()
+			if err != nil || n != 1 {
+				e := fmt.Errorf("error setting next retry backoff: %s", err)
+				log.Debug().Err(e)
+				return e
+			}
 			return nil
 		}
-		return fmt.Errorf("error making initial message batch pull: %s", err)
 	}
-	log.Debug().Msgf("pulled %d messages in initial batch", len(m))
-
-	mIds := make([]int64, len(m))
-	for i := range m {
-		mIds[i] = m[i].ID
-	}
-
-	query, args, err := sqlx.In(`UPDATE message WHERE id IN (?) AND consumer_id = ? SET status = ?, consumer_id = ?`, mIds, consumerIdUnassigned, MessageStatusConsumed, c.ID)
+	log.Debug().Msgf("successfully processed message %d", m.ID)
+	log.Debug().Msgf("deleting message %d from queue", m.ID)
+	query = tx.Rebind("DELETE FROM message WHERE id = ?")
+	res, err := tx.ExecContext(ctx, query, sqlMessage.ID)
 	if err != nil {
-		return fmt.Errorf("error formulating message claim statement: %s", err)
+		e := fmt.Errorf("error deleting message from queue: %s", err)
+		log.Debug().Err(e)
+		return e
 	}
-	query = tx.Rebind(query)
-
-	res, err := tx.Exec(query, args...)
-	if err != nil {
-		return fmt.Errorf("error executing message claim statement: %s", err)
-	}
-
 	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("error retrieving number of messages claimed: %s", err)
+	if err != nil || n != 1 {
+		e := fmt.Errorf("error deleting message from queue: %s", err)
+		log.Debug().Err(e)
+		return e
 	}
-	log.Debug().Msgf("claimed %d/%d messages", n, len(m))
-
-	log.Debug().Msg("retrieving claimed subset of initial batch")
-	query, args, err = sqlx.In(`SELECT id, payload FROM message WHERE id IN (?) AND consumer_id = ?`, mIds, c.ID)
-	if err != nil {
-		return fmt.Errorf("error formulating claimed messages retrieval query: %s", err)
+	if err := tx.Commit(); err != nil {
+		e := fmt.Errorf("error committing transaction: %s", err)
+		log.Debug().Err(e)
+		return e
 	}
-	query = tx.Rebind(query)
-	rows, err := tx.Queryx(query, args...)
-	if err != nil {
-		return fmt.Errorf("error retrieving claimed batch subset: %s", err)
-	}
-	defer rows.Close()
-	log.Debug().Msg("committing pullMessages tx")
-
-	log.Debug().Msg("delivering messages")
-	for rows.Next() {
-		var messageRecord sql.Message
-		err := rows.StructScan(&messageRecord)
-		if err != nil {
-			return fmt.Errorf("error scanning message record: %s", err)
-		}
-		m, err := FromSQL(&messageRecord)
-		if err != nil {
-			return err
-		}
-		log.Debug().Msgf("delivering message %d", m.ID)
-		c.msgChan <- m
-		log.Debug().Msgf("delivered message %d", m.ID)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("error with message results object: %s", err)
-	}
-	err = tx.Commit()
-	if err != nil {
-		return fmt.Errorf("error committing pull tx: %s", err)
-	}
+	log.Debug().Msgf("deleted message %s from queue", m.ID)
 	return nil
 }
