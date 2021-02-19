@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS message (
 	created DATETIME DEFAULT CURRENT_TIMESTAMP
 );`
 	messageIdStatus = `
-CREATEINDEX IF NOT EXISTS message_id_status
+CREATE INDEX IF NOT EXISTS message_id_status
 ON message (id, status);
 `
 	messageIdConsumer = `

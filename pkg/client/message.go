@@ -17,6 +17,7 @@ const (
 type Message struct {
 	ID      int64
 	Payload []byte
+	retries int32
 }
 
 func FromSQL(sqlMessage *sql.Message) (*Message, error) {
