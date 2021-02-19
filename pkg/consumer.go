@@ -1,4 +1,4 @@
-package client
+package pkg
 
 import (
 	"context"
@@ -11,12 +11,12 @@ import (
 )
 
 const (
-	emptyQueueConstantBackoffDurationSeconds = 5
-	concurrentProcessingGoroutines           = 10
-	pullBatchSize                            = 50
-	consumerIdUnassigned                     = 0
-	processingMaxRetries                     = 3
-	retryInitialBackoffPeriodSeconds         = 2
+	processErrorWaitSeconds          = 5
+	concurrentProcessingGoroutines   = 10
+	pullBatchSize                    = 50
+	consumerIdUnassigned             = 0
+	processingMaxRetries             = 3
+	retryInitialBackoffPeriodSeconds = 2
 )
 
 type Consumer struct {
@@ -26,21 +26,27 @@ type Consumer struct {
 }
 
 func newConsumer(ctx context.Context, db *sqlx.DB, processFunc func(m *Message) error) (*Consumer, error) {
-	c := &Consumer{db: db, processFunc: processFunc}
 	log.Debug().Msg("pinging database")
-	if err := c.db.Ping(); err != nil {
+	if err := db.Ping(); err != nil {
 		e := fmt.Errorf("error pinging database: %s", err)
 		log.Debug().Err(e)
 		return nil, e
 	}
+	c := &Consumer{db: db, processFunc: processFunc}
 	go c.startProcessingMessages(ctx)
 	return c, nil
 }
 
 func (c *Consumer) startProcessingMessages(ctx context.Context) {
-	for {
-		if err := backoff.Retry(func() error { return c.processMessage(ctx, time.Now().UTC()) }, backoff.NewConstantBackOff(time.Second*emptyQueueConstantBackoffDurationSeconds)); err != nil {
-			log.Err(err).Msg("error pulling messages")
+	select {
+	case <-ctx.Done():
+		log.Debug().Err(ctx.Err()).Msg("stopping message processing: context closed")
+		return
+	default:
+		if err := backoff.Retry(
+			func() error { return c.processMessage(ctx, time.Now().UTC()) },
+			backoff.NewConstantBackOff(time.Second*processErrorWaitSeconds)); err != nil {
+			log.Err(err).Msg("permanent error pulling messages")
 			return
 		}
 	}
@@ -55,7 +61,7 @@ func (c *Consumer) processMessage(ctx context.Context, now time.Time) error {
 	}
 	defer tx.Rollback()
 	var m Message
-	query := tx.Rebind("SELECT id, payload, retries FROM message WHERE retry_backoff_ends <= ? FOR UPDATE SKIP LOCKED ORDER BY created ASC LIMIT 1")
+	query := tx.Rebind("SELECT id, payload, retries FROM message WHERE ready_at <= ? FOR UPDATE SKIP LOCKED ORDER BY ready_at ASC LIMIT 1")
 	if err := tx.QueryRowContext(ctx, query, now).Scan(&m.ID, &m.Payload, &m.retries); err != nil {
 		e := fmt.Errorf("error pulling message: %s", err)
 		log.Debug().Err(e)
@@ -64,19 +70,19 @@ func (c *Consumer) processMessage(ctx context.Context, now time.Time) error {
 	if err := c.processFunc(&m); err != nil {
 		log.Debug().Err(err).Msg("error processing message")
 		if m.retries < processingMaxRetries {
-			query := c.db.Rebind("UPDATE message WHERE id = ? SET retries = ?, retry_backoff_ends = ?")
+			query := c.db.Rebind("UPDATE message WHERE id = ? SET retries = ?, ready_at = ?")
 			numRetries := m.retries + 1
 			backoffPeriodSeconds := retryInitialBackoffPeriodSeconds * numRetries
-			retryBackoffEnds := time.Now().UTC().Add(time.Second * time.Duration(backoffPeriodSeconds))
-			res, err := tx.ExecContext(ctx, query, m.ID, numRetries, retryBackoffEnds)
+			readyAt := time.Now().UTC().Add(time.Second * time.Duration(backoffPeriodSeconds))
+			res, err := tx.ExecContext(ctx, query, m.ID, numRetries, readyAt)
 			if err != nil {
-				e := fmt.Errorf("error setting next retry backoff: %s", err)
+				e := fmt.Errorf("error setting next ready_at: %s", err)
 				log.Debug().Err(e)
 				return e
 			}
 			n, err := res.RowsAffected()
 			if err != nil || n != 1 {
-				e := fmt.Errorf("error setting next retry backoff: %s", err)
+				e := fmt.Errorf("error setting next ready_at: %s", err)
 				log.Debug().Err(e)
 				return e
 			}

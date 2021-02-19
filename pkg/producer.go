@@ -1,6 +1,7 @@
-package client
+package pkg
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/cenkalti/backoff/v4"
@@ -12,60 +13,57 @@ const (
 	messageCacheSize = 50
 	//TODO implement push batches
 	pushBatchSize = 1
+	maxRetries    = 1
 )
 
 type Producer struct {
-	db       *sqlx.DB
-	msgChan  chan *Message
-	msgCache []*Message
+	db      *sqlx.DB
+	msgChan chan *Message
 }
 
-func newProducer(db *sqlx.DB) (*Producer, error) {
+func newProducer(ctx context.Context, db *sqlx.DB) (*Producer, error) {
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("couldn't reach database: %s", err)
 	}
-	p := &Producer{db: db, msgChan: make(chan *Message), msgCache: make([]*Message, 0, messageCacheSize)}
-	go p.startPushingMessages()
+	p := &Producer{db: db, msgChan: make(chan *Message)}
+	go p.startPushingMessages(ctx)
 	return p, nil
 }
 
 func (p *Producer) Push(m *Message) {
-	p.msgCache = append(p.msgCache, m)
-	if len(p.msgCache) == pushBatchSize {
-		p.drainMessageCache()
-	}
+	p.msgChan <- m
 }
 
-func (p *Producer) drainMessageCache() {
-	for _, m := range p.msgCache {
-		p.msgChan <- m
-	}
-}
-
-func (p *Producer) startPushingMessages() {
+func (p *Producer) startPushingMessages(ctx context.Context) {
+	msgCache := make([]*Message, messageCacheSize)
+	numCached := 0
 	for {
-		msgCache := make([]*Message, 0, messageCacheSize)
 		select {
+		case <-ctx.Done():
+			log.Debug().Err(ctx.Err()).Msg("stopping message pushing: context closed")
+			return
+
 		case m := <-p.msgChan:
-			msgCache = append(msgCache, m)
-			if len(msgCache) == messageCacheSize {
+			msgCache[numCached] = m
+			numCached += 1
+			if numCached == pushBatchSize {
 				break
 			}
-
 		}
-		if err := backoff.Retry(func() error { return p.pushMessages(msgCache) }, backoff.NewExponentialBackOff()); err != nil {
+		if err := backoff.Retry(func() error { return p.pushMessages(msgCache, numCached) }, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), maxRetries)); err != nil {
 			log.Err(err).Msg("error pushing messages")
 			return
 		}
+		numCached = 0
 	}
 }
 
-func (p *Producer) pushMessages(m []*Message) error {
-	payloads := make([]*[]byte, 0, len(m))
-	for _, message := range m {
-		payloads = append(payloads, &message.Payload)
+func (p *Producer) pushMessages(messages []*Message, numMessages int) error {
+	payloads := make([]*[]byte, 0, numMessages)
+	for i := 0; i < numMessages; i++ {
+		payloads = append(payloads, &messages[i].Payload)
 	}
-	query, args, err := sqlx.In("INSERT INTO message (payload) VALUES(?)", payloads)
+	query, args, err := sqlx.In("INSERT INTO message (payload) VALUES (?)", payloads)
 	if err != nil {
 		return fmt.Errorf("error formulating INSERT query: %s", err)
 	}

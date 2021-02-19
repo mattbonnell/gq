@@ -1,15 +1,15 @@
-package client
+package pkg
 
 import (
 	"testing"
 
-	"github.com/mattbonnell/gq/internal/sql"
+	"github.com/mattbonnell/gq/internal"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMessageFromSQL_StringPayload(t *testing.T) {
 	p := []byte("random payload")
-	s := sql.Message{}
+	s := internal.Message{}
 	s.ID = 9
 	s.Payload = p
 	m, err := FromSQL(&s)
@@ -20,7 +20,7 @@ func TestMessageFromSQL_StringPayload(t *testing.T) {
 }
 
 func TestMessageFromSQL_EmptyPayload(t *testing.T) {
-	s := sql.Message{}
+	s := internal.Message{}
 	s.Payload = make([]byte, 0)
 	m, err := FromSQL(&s)
 	require.NoError(t, err)
