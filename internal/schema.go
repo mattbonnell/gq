@@ -1,19 +1,16 @@
-package schema
+package internal
 
 import (
 	"fmt"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/mattbonnell/gq/internal/sql/schema/mysql"
-	"github.com/mattbonnell/gq/internal/sql/schema/sqlite3"
+	"github.com/mattbonnell/gq/internal/drivers/mysql"
 	"github.com/rs/zerolog/log"
 )
 
 func getSchema(db *sqlx.DB) []string {
 	switch db.DriverName() {
-	case "sqlite3":
-		return sqlite3.Schema
 	case "mysql":
 		return mysql.Schema
 	default:
@@ -21,7 +18,7 @@ func getSchema(db *sqlx.DB) []string {
 	}
 }
 
-func Create(db *sqlx.DB) error {
+func CreateSchema(db *sqlx.DB) error {
 	log.Debug().Msg("creating schema")
 	tx, err := db.Begin()
 	if err != nil {

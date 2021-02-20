@@ -1,10 +1,11 @@
-package client
+package pkg
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/mattbonnell/gq/internal/sql/schema"
+	"github.com/mattbonnell/gq/internal"
 	"github.com/rs/zerolog/log"
 )
 
@@ -15,7 +16,7 @@ type Client struct {
 func New(db *sqlx.DB) (*Client, error) {
 	log.Debug().Msg("creating new client")
 	c := Client{db: db}
-	if err := schema.Create(c.db); err != nil {
+	if err := internal.CreateSchema(c.db); err != nil {
 		err = fmt.Errorf("error creating schema: %s", err)
 		log.Debug().Msg(err.Error())
 		return nil, err
@@ -24,6 +25,6 @@ func New(db *sqlx.DB) (*Client, error) {
 	return &c, nil
 }
 
-func (c Client) NewConsumer() (*Consumer, error) {
-	return newConsumer(c.db)
+func (c Client) NewConsumer(ctx context.Context, process func(m *Message) error) (*Consumer, error) {
+	return newConsumer(ctx, c.db, process)
 }
