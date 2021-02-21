@@ -2,6 +2,7 @@ package gq
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 )
 
 const (
-	processErrorWaitSeconds          = 5
+	processErrorWaitSeconds          = 2
 	concurrentProcessingGoroutines   = 10
 	pullBatchSize                    = 50
 	consumerIdUnassigned             = 0
@@ -63,6 +64,10 @@ func (c *Consumer) processMessage(ctx context.Context, now time.Time) error {
 	var m Message
 	query := tx.Rebind("SELECT id, payload, retries FROM message WHERE ready_at <= ? FOR UPDATE SKIP LOCKED ORDER BY ready_at ASC LIMIT 1")
 	if err := tx.QueryRowContext(ctx, query, now).Scan(&m.ID, &m.Payload, &m.retries); err != nil {
+		if err == sql.ErrNoRows {
+			log.Debug().Err(err).Msg("no messages to pull")
+			return err
+		}
 		e := fmt.Errorf("error pulling message: %s", err)
 		log.Debug().Err(e)
 		return e
