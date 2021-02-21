@@ -4,6 +4,7 @@ services:
     image: mysql:latest
     environment:
       - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=gq
     ports:
       - "3306:3306"
 

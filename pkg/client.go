@@ -1,4 +1,4 @@
-package pkg
+package gq
 
 import (
 	"context"
@@ -13,7 +13,7 @@ type Client struct {
 	db *sqlx.DB
 }
 
-func New(db *sqlx.DB) (*Client, error) {
+func NewClient(db *sqlx.DB) (*Client, error) {
 	log.Debug().Msg("creating new client")
 	c := Client{db: db}
 	if err := internal.CreateSchema(c.db); err != nil {
@@ -27,4 +27,8 @@ func New(db *sqlx.DB) (*Client, error) {
 
 func (c Client) NewConsumer(ctx context.Context, process func(m *Message) error) (*Consumer, error) {
 	return newConsumer(ctx, c.db, process)
+}
+
+func (c Client) NewProducer(ctx context.Context, opts ...ProducerOption) (*Producer, error) {
+	return newProducer(ctx, c.db, opts...)
 }
