@@ -1,4 +1,4 @@
-package pkg
+package gq
 
 import (
 	"regexp"
@@ -21,7 +21,7 @@ func TestNewShouldSucceed_mysql(t *testing.T) {
 	}
 	mock.ExpectCommit()
 
-	_, err = New(sqlx.NewDb(db, "mysql"))
+	_, err = NewClient(sqlx.NewDb(db, "mysql"))
 	require.NoError(t, err)
 }
 
@@ -34,6 +34,6 @@ func TestNewShouldFail_mysql_ClosedDb(t *testing.T) {
 	err = db.Close()
 	require.NoError(t, err)
 
-	_, err = New(sqlx.NewDb(db, "mysql"))
+	_, err = NewClient(sqlx.NewDb(db, "mysql"))
 	require.Error(t, err)
 }

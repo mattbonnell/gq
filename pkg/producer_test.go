@@ -1,9 +1,7 @@
-package pkg
+package gq
 
 import (
 	"context"
-	"database/sql"
-	"database/sql/driver"
 	"regexp"
 	"strconv"
 	"testing"
@@ -22,67 +20,71 @@ func TestPushMessageShouldSucceed_OneMessage(t *testing.T) {
 
 	mock.
 		ExpectExec(
-			regexp.QuoteMeta("INSERT INTO message (payload) VALUES (?)"),
+			regexp.QuoteMeta(`INSERT INTO message (payload) VALUES (?)`),
 		).
 		WithArgs(m.Payload).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	defer cancel()
 
-	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName))
+	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), WithMaxRetries(0))
 	require.NoError(t, err)
 
 	p.Push(&m)
 
 	select {
 	case <-ctx.Done():
-		require.Failf(t, ctx.Err().Error(), "context timed-out")
-		break
+		if err := mock.ExpectationsWereMet(); err != nil {
+			require.FailNowf(t, ctx.Err().Error(), "context timed-out")
+		}
 	default:
 		if err := mock.ExpectationsWereMet(); err == nil {
-			break
+			cancel()
 		}
 	}
-	cancel()
-	return
 }
 
 // TODO: fix this test
-func TestPushMessageShouldSucceed_TenMessages(t *testing.T) {
+func TestPushMessageShouldSucceed_ThreeMessages(t *testing.T) {
 	db, mock, err := sqlmock.New()
+	mock.MatchExpectationsInOrder(false)
 	require.NoError(t, err)
 
-	messages := make([]Message, 10)
-	payloads := make([]driver.Value, 10)
+	messages := make([]Message, 3)
 	for i := range messages {
-		p := sql.RawBytes([]byte("payload" + strconv.Itoa(i)))
-		payloads[i] = driver.Value(p)
-		messages[i].Payload = p
+		messages[i].Payload = []byte("payload" + strconv.Itoa(i))
 	}
 
-	mock.
-		ExpectExec(
-			regexp.QuoteMeta("INSERT INTO message (payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"),
-		).
-		WithArgs(payloads...).
-		WillReturnResult(sqlmock.NewResult(10, 10))
+	for i := range messages {
+		mock.
+			ExpectExec(
+				regexp.QuoteMeta(`INSERT INTO message (payload) VALUES (?)`),
+			).
+			WithArgs(messages[i].Payload).
+			WillReturnResult(sqlmock.NewResult(int64(i+1), 1))
+		t.Logf("expecting message with payload %s", string(messages[i].Payload))
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
-	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName))
+	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), WithMaxRetries(0))
 	require.NoError(t, err)
 
 	for _, m := range messages {
 		p.Push(&m)
+		time.Sleep(time.Millisecond)
 	}
 
 	select {
 	case <-ctx.Done():
-		require.FailNowf(t, ctx.Err().Error(), "context timed-out")
+		if err := mock.ExpectationsWereMet(); err != nil {
+			require.FailNowf(t, ctx.Err().Error(), "context timed-out")
+		}
 	default:
 		if err := mock.ExpectationsWereMet(); err == nil {
-			return
+			cancel()
 		}
 	}
 }
