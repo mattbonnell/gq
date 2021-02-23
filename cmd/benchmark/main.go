@@ -9,6 +9,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	gq "github.com/mattbonnell/gq/pkg"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -18,6 +19,7 @@ const (
 )
 
 func main() {
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	db := sqlx.MustConnect(databaseDriver, databaseDSN)
 	client, err := gq.NewClient(db)
 	if err != nil {
