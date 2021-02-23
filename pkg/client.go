@@ -29,6 +29,6 @@ func (c Client) NewConsumer(ctx context.Context, process func(m *Message) error)
 	return newConsumer(ctx, c.db, process)
 }
 
-func (c Client) NewProducer(ctx context.Context, opts ...ProducerOption) (*Producer, error) {
-	return newProducer(ctx, c.db, opts...)
+func (c Client) NewProducer(ctx context.Context, opts *ProducerOptions) (*Producer, error) {
+	return newProducer(ctx, c.db, opts)
 }

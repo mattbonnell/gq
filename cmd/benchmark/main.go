@@ -1,9 +1,12 @@
-package benchmark
+package main
 
 import (
 	"context"
+	"runtime"
+	"sync"
 
 	"github.com/brianvoe/gofakeit/v6"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	gq "github.com/mattbonnell/gq/pkg"
 	"github.com/rs/zerolog/log"
@@ -11,7 +14,7 @@ import (
 
 const (
 	databaseDriver = "mysql"
-	databaseDSN    = "root:password@tcp(3306)/gq"
+	databaseDSN    = "root:password@tcp(localhost:3306)/gq"
 )
 
 func main() {
@@ -24,10 +27,19 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("error creating new producer")
 	}
-	_, err = client.NewConsumer(context.TODO(), func(m *gq.Message) error {
-		log.Debug().Msgf("consumed message %d with payload %s", m.ID, m.Payload)
-		return nil
-	})
+
+	wg := sync.WaitGroup{}
+	wg.Add(100)
+	for i := 0; i < runtime.NumCPU(); i++ {
+		_, err = client.NewConsumer(context.TODO(), func(consumerIndex int) func(m *gq.Message) error {
+			return func(m *gq.Message) error {
+				defer wg.Done()
+				log.Debug().Msgf("[consumer %d] processing message %d with payload %s", consumerIndex, m.ID, m.Payload)
+				return nil
+
+			}
+		}(i))
+	}
 	if err != nil {
 		log.Fatal().Err(err).Msg("error creating new consumer")
 	}
@@ -37,5 +49,6 @@ func main() {
 		m[i].Payload = []byte(gofakeit.LoremIpsumSentence(10))
 		producer.Push(&m[i])
 	}
+	wg.Wait()
 
 }
