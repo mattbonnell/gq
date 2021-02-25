@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/mattbonnell/gq/internal/drivers/mysql"
-	"github.com/mattbonnell/gq/internal/drivers/postgres"
+	"github.com/mattbonnell/gq/internal/databases/mysql"
+	"github.com/mattbonnell/gq/internal/databases/postgres"
 	"github.com/rs/zerolog/log"
 )
 
