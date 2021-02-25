@@ -10,7 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func getSchema(driverName string) ([]string, error) {
+func GetSchema(driverName string) ([]string, error) {
 	switch driverName {
 	case "mysql":
 		return mysql.Schema, nil
@@ -32,7 +32,7 @@ func CreateSchema(db *sqlx.DB) error {
 		return fmt.Errorf("failed to begin tx: %s", err)
 	}
 	defer tx.Rollback()
-	schema, err := getSchema(db.DriverName())
+	schema, err := GetSchema(db.DriverName())
 	if err != nil {
 		return fmt.Errorf("error retrieving schema: %s", err)
 	}
