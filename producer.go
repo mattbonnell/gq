@@ -30,7 +30,7 @@ func defaultOptions() ProducerOptions {
 
 type Producer struct {
 	db      *sqlx.DB
-	msgChan chan *Message
+	msgChan chan Message
 	opts    ProducerOptions
 }
 
@@ -38,7 +38,7 @@ func newProducer(ctx context.Context, db *sqlx.DB, opts *ProducerOptions) (*Prod
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("couldn't reach database: %s", err)
 	}
-	p := Producer{db: db, msgChan: make(chan *Message)}
+	p := Producer{db: db, msgChan: make(chan Message)}
 	if opts != nil {
 		p.opts = *opts
 	} else {
@@ -48,7 +48,7 @@ func newProducer(ctx context.Context, db *sqlx.DB, opts *ProducerOptions) (*Prod
 	return &p, nil
 }
 
-func (p *Producer) Push(m *Message) {
+func (p *Producer) Push(m Message) {
 	p.msgChan <- m
 }
 
@@ -68,7 +68,7 @@ func (p Producer) startPushingMessages(ctx context.Context) {
 	}
 }
 
-func (p Producer) pushMessages(messages []*Message, numMessages int) error {
+func (p Producer) pushMessages(messages []Message, numMessages int) error {
 	payloads := make([]*[]byte, 0, numMessages)
 	for i := 0; i < numMessages; i++ {
 		payloads = append(payloads, &messages[i].Payload)
@@ -85,7 +85,7 @@ func (p Producer) pushMessages(messages []*Message, numMessages int) error {
 	return nil
 }
 
-func (p Producer) pushMessage(m *Message) error {
+func (p Producer) pushMessage(m Message) error {
 	log.Debug().Msg("pushing message onto queue")
 	stmt := p.db.Rebind("INSERT INTO message (payload) VALUES (?)")
 	res, err := p.db.Exec(stmt, &m.Payload)

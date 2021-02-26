@@ -50,7 +50,7 @@ func main() {
 	m := make([]gq.Message, numMessages)
 	for i := range m {
 		m[i].Payload = []byte(gofakeit.LoremIpsumSentence(10))
-		producer.Push(&m[i])
+		producer.Push(m[i])
 	}
 	wg.Wait()
 
