@@ -24,12 +24,12 @@ func TestProcessMessageShouldSucceed_OneMessage(t *testing.T) {
 
 	now := time.Now().UTC()
 
-	expectedMessage := &Message{}
+	expectedMessage := Message{}
 	expectedMessage.ID = 1
 	expectedMessage.Payload = []byte("message payload")
 
 	c, err := newConsumer(ctx, sqlx.NewDb(db, arbitraryDriverName), func(message []byte) error {
-		require.Equal(t, expectedMessage, Message{Payload: message})
+		require.Equal(t, expectedMessage.Payload, message)
 		return nil
 	})
 
