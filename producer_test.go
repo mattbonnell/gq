@@ -31,7 +31,7 @@ func TestPushMessageShouldSucceed_OneMessage(t *testing.T) {
 	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), &ProducerOptions{MaxRetries: 0})
 	require.NoError(t, err)
 
-	p.Push(&m)
+	p.Push(m.Payload)
 
 	select {
 	case <-ctx.Done():
@@ -73,7 +73,7 @@ func TestPushMessageShouldSucceed_ThreeMessages(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, m := range messages {
-		p.Push(&m)
+		p.Push(m.Payload)
 		time.Sleep(time.Millisecond)
 	}
 

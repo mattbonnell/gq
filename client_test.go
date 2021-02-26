@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/jmoiron/sqlx"
 	"github.com/mattbonnell/gq/internal"
 	"github.com/mattbonnell/gq/test"
 	"github.com/stretchr/testify/require"
@@ -22,7 +21,7 @@ func TestNewClient(t *testing.T) {
 				require.NoError(t, err, "failed to get schema")
 				test.ExpectSchema(t, mock, schema)
 
-				_, err = NewClient(sqlx.NewDb(db, d))
+				_, err = NewClient(db, d)
 				require.NoError(t, err)
 			})
 			t.Run("new client should fail, closed db", func(t *testing.T) {
@@ -35,7 +34,7 @@ func TestNewClient(t *testing.T) {
 				err = db.Close()
 				require.NoError(t, err)
 
-				_, err = NewClient(sqlx.NewDb(db, d))
+				_, err = NewClient(db, d)
 				require.Error(t, err)
 			})
 		})

@@ -48,8 +48,8 @@ func newProducer(ctx context.Context, db *sqlx.DB, opts *ProducerOptions) (*Prod
 	return &p, nil
 }
 
-func (p *Producer) Push(m Message) {
-	p.msgChan <- m
+func (p *Producer) Push(message []byte) {
+	p.msgChan <- Message{Payload: message}
 }
 
 func (p Producer) startPushingMessages(ctx context.Context) {
