@@ -25,7 +25,7 @@ func NewClient(db *sqlx.DB) (*Client, error) {
 	return &c, nil
 }
 
-func (c Client) NewConsumer(ctx context.Context, process func(m *Message) error) (*Consumer, error) {
+func (c Client) NewConsumer(ctx context.Context, process func(m Message) error) (*Consumer, error) {
 	return newConsumer(ctx, c.db, process)
 }
 

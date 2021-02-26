@@ -22,11 +22,11 @@ const (
 
 type Consumer struct {
 	db                       *sqlx.DB
-	processFunc              func(m *Message) error
+	processFunc              func(m Message) error
 	failedProcessingBackoffs map[int64]*backoff.BackOff
 }
 
-func newConsumer(ctx context.Context, db *sqlx.DB, processFunc func(m *Message) error) (*Consumer, error) {
+func newConsumer(ctx context.Context, db *sqlx.DB, processFunc func(m Message) error) (*Consumer, error) {
 	log.Debug().Msg("pinging database")
 	if err := db.Ping(); err != nil {
 		e := fmt.Errorf("error pinging database: %s", err)
@@ -77,7 +77,7 @@ func (c *Consumer) processMessage(ctx context.Context, now time.Time) error {
 	}
 	log.Debug().Msgf("pulled message %d", m.ID)
 	log.Debug().Msgf("processing message %d", m.ID)
-	if err := c.processFunc(&m); err != nil {
+	if err := c.processFunc(m); err != nil {
 		log.Debug().Err(err).Msg("error processing message")
 		if m.retries < processingMaxRetries {
 			query := c.db.Rebind("UPDATE message WHERE id = ? SET retries = ?, ready_at = ?")

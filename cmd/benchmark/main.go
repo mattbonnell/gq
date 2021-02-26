@@ -34,8 +34,8 @@ func main() {
 	wg := sync.WaitGroup{}
 	wg.Add(numMessages)
 	for i := 0; i < runtime.NumCPU(); i++ {
-		_, err = client.NewConsumer(context.TODO(), func(consumerIndex int) func(m *gq.Message) error {
-			return func(m *gq.Message) error {
+		_, err = client.NewConsumer(context.TODO(), func(consumerIndex int) func(m gq.Message) error {
+			return func(m gq.Message) error {
 				defer wg.Done()
 				log.Debug().Msgf("[consumer %d] processing message %d with payload %s", consumerIndex, m.ID, m.Payload)
 				return nil
