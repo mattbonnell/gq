@@ -37,7 +37,7 @@ func TestProcessMessageShouldSucceed_OneMessage(t *testing.T) {
 
 	mock.
 		ExpectQuery(
-			regexp.QuoteMeta(`SELECT id, payload, retries FROM message WHERE ready_at <= ? FOR UPDATE SKIP LOCKED ORDER BY ready_at ASC LIMIT 1`),
+			regexp.QuoteMeta(`SELECT id, payload, retries FROM message WHERE ready_at <= ? ORDER BY ready_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED`),
 		).
 		WithArgs(
 			now,

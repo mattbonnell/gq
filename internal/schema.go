@@ -5,16 +5,23 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/mattbonnell/gq/internal/drivers/mysql"
+	"github.com/mattbonnell/gq/internal/databases/mysql"
+	"github.com/mattbonnell/gq/internal/databases/postgres"
 	"github.com/rs/zerolog/log"
 )
 
-func getSchema(db *sqlx.DB) []string {
-	switch db.DriverName() {
+func GetSchema(driverName string) ([]string, error) {
+	switch driverName {
 	case "mysql":
-		return mysql.Schema
+		return mysql.Schema, nil
+	case "pq":
+		fallthrough
+	case "pqx":
+		fallthrough
+	case "postgres":
+		return postgres.Schema, nil
 	default:
-		panic(fmt.Sprintf("driver '%s' not supported", db.DriverName()))
+		return nil, fmt.Errorf("driver '%s' not supported", driverName)
 	}
 }
 
@@ -25,7 +32,11 @@ func CreateSchema(db *sqlx.DB) error {
 		return fmt.Errorf("failed to begin tx: %s", err)
 	}
 	defer tx.Rollback()
-	for _, stmt := range getSchema(db) {
+	schema, err := GetSchema(db.DriverName())
+	if err != nil {
+		return fmt.Errorf("error retrieving schema: %s", err)
+	}
+	for _, stmt := range schema {
 		_, err := tx.Exec(stmt)
 		if err != nil {
 			return fmt.Errorf("failed to exec stmt %s: %s", strings.Split(stmt, "(")[0], err)

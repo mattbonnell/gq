@@ -28,7 +28,7 @@ func TestPushMessageShouldSucceed_OneMessage(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
-	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), WithMaxRetries(0))
+	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), &ProducerOptions{MaxRetries: 0})
 	require.NoError(t, err)
 
 	p.Push(&m)
@@ -69,7 +69,7 @@ func TestPushMessageShouldSucceed_ThreeMessages(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
-	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), WithMaxRetries(0))
+	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), &ProducerOptions{MaxRetries: 0})
 	require.NoError(t, err)
 
 	for _, m := range messages {

@@ -1,30 +1,26 @@
 package internal
 
 import (
-	"regexp"
+	"fmt"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
-	"github.com/mattbonnell/gq/internal/drivers/mysql"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattbonnell/gq/test"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCreate_mysql(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err, "failed to create mock")
+func TestCreateSchema(t *testing.T) {
+	for _, d := range SupportedDrivers {
+		t.Run(fmt.Sprintf("driver=%s", d), func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err, "failed to create mock")
+			schema, err := GetSchema(d)
+			require.NoError(t, err, "failed to get schema")
+			test.ExpectSchema(t, mock, schema)
 
-	ExpectSchema(mock, mysql.Schema)
-
-	err = CreateSchema(sqlx.NewDb(db, "mysql"))
-	require.NoError(t, err)
-}
-
-func ExpectSchema(mock sqlmock.Sqlmock, schema []string) {
-	mock.ExpectBegin()
-	for _, stmt := range schema {
-		mock.ExpectExec(regexp.QuoteMeta(stmt)).WillReturnResult(sqlmock.NewResult(0, 0))
+			err = CreateSchema(sqlx.NewDb(db, d))
+			require.NoError(t, err)
+		})
 	}
-	mock.ExpectCommit()
 }

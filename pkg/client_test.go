@@ -1,39 +1,44 @@
 package gq
 
 import (
-	"regexp"
+	"fmt"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
-	"github.com/mattbonnell/gq/internal/drivers/mysql"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattbonnell/gq/internal"
+	"github.com/mattbonnell/gq/test"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewShouldSucceed_mysql(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
+func TestNewClient(t *testing.T) {
+	for _, d := range internal.SupportedDrivers {
+		t.Run(fmt.Sprintf("driver=%s", d), func(t *testing.T) {
+			t.Run("new client should succeed", func(t *testing.T) {
+				db, mock, err := sqlmock.New()
+				require.NoError(t, err)
 
-	mock.ExpectBegin()
-	for _, stmt := range mysql.Schema {
-		mock.ExpectExec(regexp.QuoteMeta(stmt)).WillReturnResult(sqlmock.NewResult(0, 0))
+				schema, err := internal.GetSchema(d)
+				require.NoError(t, err, "failed to get schema")
+				test.ExpectSchema(t, mock, schema)
+
+				_, err = NewClient(sqlx.NewDb(db, d))
+				require.NoError(t, err)
+			})
+			t.Run("new client should fail, closed db", func(t *testing.T) {
+
+				db, mock, err := sqlmock.New()
+				require.NoError(t, err)
+
+				mock.ExpectClose()
+
+				err = db.Close()
+				require.NoError(t, err)
+
+				_, err = NewClient(sqlx.NewDb(db, d))
+				require.Error(t, err)
+			})
+		})
+
 	}
-	mock.ExpectCommit()
-
-	_, err = NewClient(sqlx.NewDb(db, "mysql"))
-	require.NoError(t, err)
-}
-
-func TestNewShouldFail_mysql_ClosedDb(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-
-	mock.ExpectClose()
-
-	err = db.Close()
-	require.NoError(t, err)
-
-	_, err = NewClient(sqlx.NewDb(db, "mysql"))
-	require.Error(t, err)
 }
