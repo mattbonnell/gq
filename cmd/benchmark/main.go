@@ -8,7 +8,7 @@ import (
 	"github.com/brianvoe/gofakeit/v6"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	gq "github.com/mattbonnell/gq/pkg"
+	"github.com/mattbonnell/gq"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
