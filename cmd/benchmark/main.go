@@ -16,6 +16,7 @@ import (
 const (
 	databaseDriver = "mysql"
 	databaseDSN    = "root:password@tcp(localhost:3306)/gq"
+	numMessages    = 100
 )
 
 func main() {
@@ -31,7 +32,7 @@ func main() {
 	}
 
 	wg := sync.WaitGroup{}
-	wg.Add(100)
+	wg.Add(numMessages)
 	for i := 0; i < runtime.NumCPU(); i++ {
 		_, err = client.NewConsumer(context.TODO(), func(consumerIndex int) func(m *gq.Message) error {
 			return func(m *gq.Message) error {
@@ -46,7 +47,7 @@ func main() {
 		log.Fatal().Err(err).Msg("error creating new consumer")
 	}
 
-	m := make([]gq.Message, 100)
+	m := make([]gq.Message, numMessages)
 	for i := range m {
 		m[i].Payload = []byte(gofakeit.LoremIpsumSentence(10))
 		producer.Push(&m[i])
