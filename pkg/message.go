@@ -2,7 +2,6 @@ package gq
 
 import (
 	"database/sql"
-	"errors"
 
 	"github.com/mattbonnell/gq/internal"
 )
@@ -20,16 +19,10 @@ type Message struct {
 	retries int32
 }
 
-func FromSQL(sqlMessage *internal.Message) (*Message, error) {
-	p := []byte(sqlMessage.Payload)
-	msg := Message{ID: sqlMessage.ID, Payload: make([]byte, len(p))}
-	if n := copy(msg.Payload, p); n < len(p) {
-		return nil, errors.New("failed to copy the message's full payload")
-	}
-	return &msg, nil
+func FromSQL(sqlMessage internal.Message) Message {
+	return Message{ID: sqlMessage.ID, Payload: []byte(sqlMessage.Payload)}
 }
 
-func (m Message) ToSQL() *internal.Message {
-	sqlMessage := &internal.Message{ID: m.ID, Payload: sql.RawBytes(m.Payload)}
-	return sqlMessage
+func (m Message) ToSQL() internal.Message {
+	return internal.Message{ID: m.ID, Payload: sql.RawBytes(m.Payload)}
 }

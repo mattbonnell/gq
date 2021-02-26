@@ -12,8 +12,7 @@ func TestMessageFromSQL_StringPayload(t *testing.T) {
 	s := internal.Message{}
 	s.ID = 9
 	s.Payload = p
-	m, err := FromSQL(&s)
-	require.NoError(t, err)
+	m := FromSQL(s)
 	s.Payload = []byte("something else")
 	require.Equal(t, p, m.Payload)
 	require.Equal(t, s.ID, m.ID)
@@ -22,7 +21,6 @@ func TestMessageFromSQL_StringPayload(t *testing.T) {
 func TestMessageFromSQL_EmptyPayload(t *testing.T) {
 	s := internal.Message{}
 	s.Payload = make([]byte, 0)
-	m, err := FromSQL(&s)
-	require.NoError(t, err)
+	m := FromSQL(s)
 	require.Equal(t, []byte(s.Payload), m.Payload)
 }
