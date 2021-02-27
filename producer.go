@@ -3,32 +3,33 @@ package gq
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff"
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog/log"
 )
 
 const (
-	messageCacheSize = 50
-	//TODO implement push batches
+	messageCacheSize  = 50
 	pushBatchSize     = 1
 	defaultMaxRetries = 3
+	defaultPushPeriod = "5ms"
 )
 
 // ProducerOptions represents the options which can be used to tailor producer behaviour
 type ProducerOptions struct {
 	// MaxRetries is the maximum number of times a message push will be retried (default: 3)
 	MaxRetries int
-	// BatchSize is the number of messages that should be batched before being pushed to the DB
+	// PushPeriod is duration of the period messages should be pushed at (default: 5ms).
 	// This can be tuned to achieve the desired throughput/latency tradeoff
-	BatchSize int
+	PushPeriod string
 }
 
 func defaultOptions() ProducerOptions {
 	return ProducerOptions{
 		MaxRetries: defaultMaxRetries,
-		BatchSize:  pushBatchSize,
+		PushPeriod: defaultPushPeriod,
 	}
 }
 
@@ -49,7 +50,11 @@ func newProducer(ctx context.Context, db *sqlx.DB, opts *ProducerOptions) (*Prod
 	} else {
 		p.opts = defaultOptions()
 	}
-	go p.startPushingMessages(ctx)
+	d, err := time.ParseDuration(p.opts.PushPeriod)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing push period: %s", err)
+	}
+	go p.startPushingMessages(ctx, d)
 	return &p, nil
 }
 
@@ -58,19 +63,17 @@ func (p *Producer) Push(message []byte) {
 	p.msgChan <- message
 }
 
-func (p Producer) startPushingMessages(ctx context.Context) {
-	cache := make([][]byte, 0, p.opts.BatchSize)
+func (p Producer) startPushingMessages(ctx context.Context, period time.Duration) {
+	cache := make([][]byte, 0, messageCacheSize)
+	ticker := time.NewTicker(period)
 	for {
 		select {
 		case <-ctx.Done():
 			log.Debug().Err(ctx.Err()).Msg("stopping message pushing: context closed")
 			return
-
 		case m := <-p.msgChan:
 			cache = append(cache, m)
-			if len(cache) < cap(cache) {
-				continue
-			}
+		case <-ticker.C:
 			if err := backoff.Retry(func() error { return p.pushMessages(cache) }, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), uint64(p.opts.MaxRetries))); err != nil {
 				log.Err(err).Msg("error pushing messages")
 				return
