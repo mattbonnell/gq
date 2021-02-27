@@ -3,6 +3,7 @@ package gq
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -96,13 +97,16 @@ func clear(cache [][]byte) [][]byte {
 
 func (p Producer) pushMessages(messages [][]byte) error {
 	log.Debug().Msgf("pushing %d messages onto queue", len(messages))
-	query, args, err := sqlx.In("INSERT INTO message (payload) VALUES (?)", messages)
-	if err != nil {
-		return fmt.Errorf("error formulating INSERT query: %s", err)
+	placeholders := make([]string, len(messages))
+	args := make([]interface{}, len(messages))
+	for i := range messages {
+		placeholders[i] = "(?)"
+		args[i] = messages[i]
 	}
+	valuesListPlaceholders := strings.Join(placeholders, ", ")
+	query := fmt.Sprintf("INSERT INTO message (payload) VALUES %s", valuesListPlaceholders)
 	query = p.db.Rebind(query)
-	_, err = p.db.Exec(query, args...)
-	if err != nil {
+	if _, err := p.db.Exec(query, args...); err != nil {
 		return fmt.Errorf("error INSERTING messages: %s", err)
 	}
 	log.Debug().Msg("successfully pushed messages onto queue")

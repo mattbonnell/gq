@@ -50,7 +50,7 @@ func TestPushMessageShouldSucceed_ThreeMessages(t *testing.T) {
 
 	mock.
 		ExpectExec(
-			regexp.QuoteMeta(`INSERT INTO message (payload) VALUES (?, ?, ?)`),
+			regexp.QuoteMeta(`INSERT INTO message (payload) VALUES (?), (?), (?)`),
 		).
 		WithArgs(messages[0], messages[1], messages[2]).
 		WillReturnResult(sqlmock.NewResult(3, 3))
