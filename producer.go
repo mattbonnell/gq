@@ -13,13 +13,13 @@ import (
 const (
 	messageCacheSize       = 50
 	pushBatchSize          = 1
-	defaultPushPeriod      = "5ms"
+	defaultPushPeriod      = "50ms"
 	defaultMaxRetryPeriods = 1
 )
 
 // ProducerOptions represents the options which can be used to tailor producer behaviour
 type ProducerOptions struct {
-	// PushPeriod is duration of the period messages should be pushed at (default: 5ms).
+	// PushPeriod is duration of the period messages should be pushed at (default: 50ms).
 	// This can be tuned to achieve the desired throughput/latency tradeoff
 	PushPeriod string
 	// MaxRetryPeriods is the maximum number of push periods to retry a batch of messages for before discarding them (default: 1)
@@ -95,6 +95,7 @@ func clear(cache [][]byte) [][]byte {
 }
 
 func (p Producer) pushMessages(messages [][]byte) error {
+	log.Debug().Msgf("pushing %s messages onto queue", len(messages))
 	query, args, err := sqlx.In("INSERT INTO message (payload) VALUES (?)", messages)
 	if err != nil {
 		return fmt.Errorf("error formulating INSERT query: %s", err)
@@ -104,16 +105,6 @@ func (p Producer) pushMessages(messages [][]byte) error {
 	if err != nil {
 		return fmt.Errorf("error INSERTING messages: %s", err)
 	}
-	return nil
-}
-
-func (p Producer) pushMessage(message []byte) error {
-	log.Debug().Msg("pushing message onto queue")
-	stmt := p.db.Rebind("INSERT INTO message (payload) VALUES (?)")
-	_, err := p.db.Exec(stmt, message)
-	if err != nil {
-		return fmt.Errorf("error inserting message: %s", err)
-	}
-	log.Debug().Msg("successfully pushed message onto queue")
+	log.Debug().Msg("successfully pushed messages onto queue")
 	return nil
 }
