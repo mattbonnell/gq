@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	messageCacheSize       = 50
+	messageCacheSize       = 100
 	pushBatchSize          = 1
 	defaultPushPeriod      = "50ms"
 	defaultMaxRetryPeriods = 1
