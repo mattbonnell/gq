@@ -8,12 +8,13 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
+	"github.com/mattbonnell/gq/internal"
 	"github.com/stretchr/testify/require"
 )
 
 const arbitraryDriverName = "mysql"
 
-func TestProcessMessageShouldSucceed_OneMessage(t *testing.T) {
+func TestPullMessageShouldSucceed_OneMessage(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("an error '%s' was not expected when opening a stub database connection", err)
@@ -24,12 +25,12 @@ func TestProcessMessageShouldSucceed_OneMessage(t *testing.T) {
 
 	now := time.Now().UTC()
 
-	expectedMessage := Message{}
+	expectedMessage := internal.Message{}
 	expectedMessage.ID = 1
-	expectedMessage.Payload = []byte("message payload")
+	expectedPayload := []byte("message payload")
 
 	c, err := newConsumer(ctx, sqlx.NewDb(db, arbitraryDriverName), func(message []byte) error {
-		require.Equal(t, expectedMessage.Payload, message)
+		require.Equal(t, expectedPayload, message)
 		return nil
 	})
 
@@ -44,7 +45,7 @@ func TestProcessMessageShouldSucceed_OneMessage(t *testing.T) {
 		).
 		WillReturnRows(
 			sqlmock.NewRows([]string{"id", "payload", "retries"}).
-				AddRow(expectedMessage.ID, expectedMessage.Payload, expectedMessage.retries),
+				AddRow(expectedMessage.ID, expectedPayload, expectedMessage.Retries),
 		)
 
 	mock.
@@ -60,6 +61,6 @@ func TestProcessMessageShouldSucceed_OneMessage(t *testing.T) {
 
 	mock.ExpectCommit()
 
-	err = c.processMessage(ctx, now)
+	err = c.pullMessage(ctx, now)
 	require.NoError(t, err)
 }

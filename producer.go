@@ -2,10 +2,12 @@ package gq
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/jmoiron/sqlx"
+	"github.com/mattbonnell/gq/internal"
 	"github.com/rs/zerolog/log"
 )
 
@@ -30,7 +32,7 @@ func defaultOptions() ProducerOptions {
 
 type Producer struct {
 	db      *sqlx.DB
-	msgChan chan Message
+	msgChan chan internal.Message
 	opts    ProducerOptions
 }
 
@@ -38,7 +40,7 @@ func newProducer(ctx context.Context, db *sqlx.DB, opts *ProducerOptions) (*Prod
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("couldn't reach database: %s", err)
 	}
-	p := Producer{db: db, msgChan: make(chan Message)}
+	p := Producer{db: db, msgChan: make(chan internal.Message)}
 	if opts != nil {
 		p.opts = *opts
 	} else {
@@ -49,7 +51,7 @@ func newProducer(ctx context.Context, db *sqlx.DB, opts *ProducerOptions) (*Prod
 }
 
 func (p *Producer) Push(message []byte) {
-	p.msgChan <- Message{Payload: message}
+	p.msgChan <- internal.Message{Payload: message}
 }
 
 func (p Producer) startPushingMessages(ctx context.Context) {
@@ -68,10 +70,10 @@ func (p Producer) startPushingMessages(ctx context.Context) {
 	}
 }
 
-func (p Producer) pushMessages(messages []Message, numMessages int) error {
-	payloads := make([]*[]byte, 0, numMessages)
+func (p Producer) pushMessages(messages []internal.Message, numMessages int) error {
+	payloads := make([]sql.RawBytes, 0, numMessages)
 	for i := 0; i < numMessages; i++ {
-		payloads = append(payloads, &messages[i].Payload)
+		payloads = append(payloads, messages[i].Payload)
 	}
 	query, args, err := sqlx.In("INSERT INTO message (payload) VALUES (?)", payloads)
 	if err != nil {
@@ -85,7 +87,7 @@ func (p Producer) pushMessages(messages []Message, numMessages int) error {
 	return nil
 }
 
-func (p Producer) pushMessage(m Message) error {
+func (p Producer) pushMessage(m internal.Message) error {
 	log.Debug().Msg("pushing message onto queue")
 	stmt := p.db.Rebind("INSERT INTO message (payload) VALUES (?)")
 	res, err := p.db.Exec(stmt, &m.Payload)

@@ -9,6 +9,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
+	"github.com/mattbonnell/gq/internal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,7 +17,7 @@ func TestPushMessageShouldSucceed_OneMessage(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 
-	m := Message{Payload: []byte("random payload")}
+	m := internal.Message{Payload: []byte("random payload")}
 
 	mock.
 		ExpectExec(
@@ -51,7 +52,7 @@ func TestPushMessageShouldSucceed_ThreeMessages(t *testing.T) {
 	mock.MatchExpectationsInOrder(false)
 	require.NoError(t, err)
 
-	messages := make([]Message, 3)
+	messages := make([]internal.Message, 3)
 	for i := range messages {
 		messages[i].Payload = []byte("payload" + strconv.Itoa(i))
 	}

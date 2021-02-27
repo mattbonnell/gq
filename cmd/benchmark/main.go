@@ -50,10 +50,10 @@ func main() {
 		log.Fatal().Err(err).Msg("error creating new consumer")
 	}
 
-	m := make([]gq.Message, numMessages)
+	m := make([][]byte, numMessages)
 	for i := range m {
-		m[i].Payload = []byte(gofakeit.LoremIpsumSentence(10))
-		producer.Push(m[i].Payload)
+		m[i] = []byte(gofakeit.LoremIpsumSentence(10))
+		producer.Push(m[i])
 	}
 	wg.Wait()
 

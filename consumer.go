@@ -8,6 +8,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/jmoiron/sqlx"
+	"github.com/mattbonnell/gq/internal"
 	"github.com/rs/zerolog/log"
 )
 
@@ -20,10 +21,10 @@ const (
 	retryInitialBackoffPeriodSeconds = 2
 )
 
+// Consumer represents a gq consumer
 type Consumer struct {
-	db                       *sqlx.DB
-	processFunc              func(message []byte) error
-	failedProcessingBackoffs map[int64]*backoff.BackOff
+	db          *sqlx.DB
+	processFunc func(message []byte) error
 }
 
 func newConsumer(ctx context.Context, db *sqlx.DB, processFunc func(message []byte) error) (*Consumer, error) {
@@ -34,11 +35,11 @@ func newConsumer(ctx context.Context, db *sqlx.DB, processFunc func(message []by
 		return nil, e
 	}
 	c := &Consumer{db: db, processFunc: processFunc}
-	go c.startProcessingMessages(ctx)
+	go c.startPullingMessages(ctx)
 	return c, nil
 }
 
-func (c *Consumer) startProcessingMessages(ctx context.Context) {
+func (c *Consumer) startPullingMessages(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -46,7 +47,7 @@ func (c *Consumer) startProcessingMessages(ctx context.Context) {
 			return
 		default:
 			if err := backoff.Retry(
-				func() error { return c.processMessage(ctx, time.Now().UTC()) },
+				func() error { return c.pullMessage(ctx, time.Now().UTC()) },
 				backoff.NewConstantBackOff(time.Second*processErrorWaitSeconds)); err != nil {
 				log.Err(err).Msg("permanent error pulling messages")
 				return
@@ -55,7 +56,7 @@ func (c *Consumer) startProcessingMessages(ctx context.Context) {
 	}
 }
 
-func (c *Consumer) processMessage(ctx context.Context, now time.Time) error {
+func (c *Consumer) pullMessage(ctx context.Context, now time.Time) error {
 	log.Debug().Msg("pulling new message")
 	tx, err := c.db.BeginTxx(ctx, nil)
 	if err != nil {
@@ -64,9 +65,11 @@ func (c *Consumer) processMessage(ctx context.Context, now time.Time) error {
 		return e
 	}
 	defer tx.Rollback()
-	var m Message
 	query := tx.Rebind("SELECT id, payload, retries FROM message WHERE ready_at <= ? ORDER BY ready_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED")
-	if err := tx.QueryRowContext(ctx, query, now).Scan(&m.ID, &m.Payload, &m.retries); err != nil {
+	// use Query instead of QueryRow so that we can close the Rows after processing the message, thus allowing us to scan the payload into an sql.RawBytes
+	// and avoid having to copy it
+	rows, err := tx.QueryxContext(ctx, query, now)
+	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Debug().Err(err).Msg("no messages to pull")
 			return err
@@ -75,13 +78,25 @@ func (c *Consumer) processMessage(ctx context.Context, now time.Time) error {
 		log.Debug().Err(e).Msg("error")
 		return e
 	}
+	defer rows.Close()
+	var m internal.Message
+	rows.Next()
+	if err := rows.Scan(&m.ID, &m.Payload, &m.Retries); err != nil {
+		e := fmt.Errorf("error scanning message: %s", err)
+		log.Debug().Err(e).Msg("error")
+		return e
+	}
+	if err := rows.Err(); err != nil {
+		log.Debug().Err(err).Msg("error from query result")
+		return err
+	}
 	log.Debug().Msgf("pulled message %d", m.ID)
 	log.Debug().Msgf("processing message %d", m.ID)
-	if err := c.processFunc(m.Payload); err != nil {
+	if err := c.processFunc([]byte(m.Payload)); err != nil {
 		log.Debug().Err(err).Msg("error processing message")
-		if m.retries < processingMaxRetries {
+		if m.Retries < processingMaxRetries {
 			query := c.db.Rebind("UPDATE message WHERE id = ? SET retries = ?, ready_at = ?")
-			numRetries := m.retries + 1
+			numRetries := m.Retries + 1
 			backoffPeriodSeconds := retryInitialBackoffPeriodSeconds * numRetries
 			readyAt := time.Now().UTC().Add(time.Second * time.Duration(backoffPeriodSeconds))
 			res, err := tx.ExecContext(ctx, query, m.ID, numRetries, readyAt)
@@ -99,6 +114,7 @@ func (c *Consumer) processMessage(ctx context.Context, now time.Time) error {
 			return nil
 		}
 	}
+	rows.Close()
 	log.Debug().Msgf("successfully processed message %d", m.ID)
 	log.Debug().Msgf("deleting message %d from queue", m.ID)
 	query = tx.Rebind("DELETE FROM message WHERE id = ?")
