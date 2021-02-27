@@ -16,6 +16,7 @@ const (
 	pushBatchSize          = 1
 	defaultPushPeriod      = "50ms"
 	defaultMaxRetryPeriods = 1
+	maxBatchQuerySize      = (1 << 16) - 1
 )
 
 // ProducerOptions represents the options which can be used to tailor producer behaviour
@@ -67,6 +68,7 @@ func (p *Producer) Push(message []byte) {
 func (p Producer) startPushingMessages(ctx context.Context, period time.Duration) {
 	buf := make([][]byte, 0, messageBufferSize)
 	ticker := time.NewTicker(period)
+	retryTimeout := period * time.Duration(p.opts.MaxRetryPeriods)
 	for {
 		select {
 		case <-ctx.Done():
@@ -74,15 +76,15 @@ func (p Producer) startPushingMessages(ctx context.Context, period time.Duration
 			return
 		case m := <-p.msgChan:
 			buf = append(buf, m)
+			if len(buf) == maxBatchQuerySize {
+				p.pushMessagesWithRetryTimeout(ctx, buf, retryTimeout)
+				buf = clear(buf)
+			}
 		case <-ticker.C:
 			if len(buf) == 0 {
 				continue
 			}
-			ctx, cancel := context.WithTimeout(ctx, period*time.Duration(p.opts.MaxRetryPeriods))
-			if err := backoff.Retry(func() error { return p.pushMessages(buf) }, backoff.WithContext(backoff.NewExponentialBackOff(), ctx)); err != nil {
-				log.Err(err).Msg("error pushing messages")
-			}
-			cancel() // release ctx resources if timeout hasn't expired
+			p.pushMessagesWithRetryTimeout(ctx, buf, retryTimeout)
 			buf = clear(buf)
 		}
 	}
@@ -93,6 +95,15 @@ func clear(buffer [][]byte) [][]byte {
 		buffer[i] = []byte{} // allow elements to be garbage-collected
 	}
 	return buffer[:0]
+}
+
+func (p Producer) pushMessagesWithRetryTimeout(ctx context.Context, messages [][]byte, retryTimeout time.Duration) {
+	ctx, cancel := context.WithTimeout(ctx, retryTimeout)
+	if err := backoff.Retry(func() error { return p.pushMessages(messages) }, backoff.WithContext(backoff.NewExponentialBackOff(), ctx)); err != nil {
+		log.Err(err).Msg("error pushing messages")
+	}
+	cancel() // release ctx resources if timeout hasn't expired
+
 }
 
 func (p Producer) pushMessages(messages [][]byte) error {
