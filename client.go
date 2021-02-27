@@ -7,8 +7,13 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/mattbonnell/gq/internal"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
+
+func init() {
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+}
 
 type Client struct {
 	db *sqlx.DB
