@@ -3,6 +3,7 @@ package gq
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -25,12 +26,15 @@ type ProducerOptions struct {
 	PushPeriod string
 	// MaxRetryPeriods is the maximum number of push periods to retry a batch of messages for before discarding them (default: 1)
 	MaxRetryPeriods int
+	// Concurrency is the number of concurrent goroutines to push messages from (default: num cpus)
+	Concurrency int
 }
 
 func defaultOptions() ProducerOptions {
 	return ProducerOptions{
 		PushPeriod:      defaultPushPeriod,
 		MaxRetryPeriods: defaultMaxRetryPeriods,
+		Concurrency:     runtime.NumCPU(),
 	}
 }
 
@@ -55,7 +59,9 @@ func newProducer(ctx context.Context, db *sqlx.DB, opts *ProducerOptions) (*Prod
 	if err != nil {
 		return nil, fmt.Errorf("error parsing push period: %s", err)
 	}
-	go p.startPushingMessages(ctx, d)
+	for c := 0; c < p.opts.Concurrency; c++ {
+		go p.startPushingMessages(ctx, d)
+	}
 	return &p, nil
 }
 
