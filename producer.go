@@ -11,25 +11,25 @@ import (
 )
 
 const (
-	messageCacheSize  = 50
-	pushBatchSize     = 1
-	defaultMaxRetries = 3
-	defaultPushPeriod = "5ms"
+	messageCacheSize       = 50
+	pushBatchSize          = 1
+	defaultPushPeriod      = "5ms"
+	defaultMaxRetryPeriods = 1
 )
 
 // ProducerOptions represents the options which can be used to tailor producer behaviour
 type ProducerOptions struct {
-	// MaxRetries is the maximum number of times a message push will be retried (default: 3)
-	MaxRetries int
 	// PushPeriod is duration of the period messages should be pushed at (default: 5ms).
 	// This can be tuned to achieve the desired throughput/latency tradeoff
 	PushPeriod string
+	// MaxRetryPeriods is the maximum number of push periods to retry a batch of messages for before discarding them (default: 1)
+	MaxRetryPeriods int
 }
 
 func defaultOptions() ProducerOptions {
 	return ProducerOptions{
-		MaxRetries: defaultMaxRetries,
-		PushPeriod: defaultPushPeriod,
+		PushPeriod:      defaultPushPeriod,
+		MaxRetryPeriods: defaultMaxRetryPeriods,
 	}
 }
 
@@ -74,13 +74,24 @@ func (p Producer) startPushingMessages(ctx context.Context, period time.Duration
 		case m := <-p.msgChan:
 			cache = append(cache, m)
 		case <-ticker.C:
-			if err := backoff.Retry(func() error { return p.pushMessages(cache) }, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), uint64(p.opts.MaxRetries))); err != nil {
-				log.Err(err).Msg("error pushing messages")
-				return
+			if len(cache) == 0 {
+				continue
 			}
-			cache = make([][]byte, 0, cap(cache))
+			ctx, cancel := context.WithTimeout(ctx, period*time.Duration(p.opts.MaxRetryPeriods))
+			if err := backoff.Retry(func() error { return p.pushMessages(cache) }, backoff.WithContext(backoff.NewExponentialBackOff(), ctx)); err != nil {
+				log.Err(err).Msg("error pushing messages")
+			}
+			cancel() // release ctx resources if timeout hasn't expired
+			cache = clear(cache)
 		}
 	}
+}
+
+func clear(cache [][]byte) [][]byte {
+	for i := range cache {
+		cache[i] = []byte{} // allow elements to be garbage-collected
+	}
+	return cache[:0]
 }
 
 func (p Producer) pushMessages(messages [][]byte) error {
