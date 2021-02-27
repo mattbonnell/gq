@@ -7,11 +7,12 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/mattbonnell/gq/internal"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
 func init() {
-	//	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 }
 
 // Client represents a client of the message queue. It can be used to spawn any number of consumers or producers.

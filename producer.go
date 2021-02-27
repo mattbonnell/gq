@@ -97,14 +97,18 @@ func clear(cache [][]byte) [][]byte {
 
 func (p Producer) pushMessages(messages [][]byte) error {
 	log.Debug().Msgf("pushing %d messages onto queue", len(messages))
-	placeholders := make([]string, len(messages))
+	valuesListBuilder := strings.Builder{}
+	valuesListBuilder.Grow(len(messages) * len([]byte("(?), ")))
 	args := make([]interface{}, len(messages))
 	for i := range messages {
-		placeholders[i] = "(?)"
+		if i == 0 {
+			valuesListBuilder.WriteString("(?)")
+		} else {
+			valuesListBuilder.WriteString(", (?)")
+		}
 		args[i] = messages[i]
 	}
-	valuesListPlaceholders := strings.Join(placeholders, ", ")
-	query := fmt.Sprintf("INSERT INTO message (payload) VALUES %s", valuesListPlaceholders)
+	query := fmt.Sprintf("INSERT INTO message (payload) VALUES %s", valuesListBuilder.String())
 	query = p.db.Rebind(query)
 	if _, err := p.db.Exec(query, args...); err != nil {
 		return fmt.Errorf("error INSERTING messages: %s", err)
