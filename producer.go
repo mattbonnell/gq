@@ -95,7 +95,7 @@ func clear(cache [][]byte) [][]byte {
 }
 
 func (p Producer) pushMessages(messages [][]byte) error {
-	log.Debug().Msgf("pushing %s messages onto queue", len(messages))
+	log.Debug().Msgf("pushing %d messages onto queue", len(messages))
 	query, args, err := sqlx.In("INSERT INTO message (payload) VALUES (?)", messages)
 	if err != nil {
 		return fmt.Errorf("error formulating INSERT query: %s", err)
