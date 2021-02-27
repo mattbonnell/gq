@@ -18,9 +18,13 @@ const (
 	defaultMaxRetries = 3
 )
 
+// ProducerOptions represents the options which can be used to tailor producer behaviour
 type ProducerOptions struct {
+	// MaxRetries is the maximum number of times a message push will be retried (default: 3)
 	MaxRetries int
-	BatchSize  int
+	// BatchSize is the number of messages that should be batched before being pushed to the DB
+	// This can be tuned to achieve the desired throughput/latency tradeoff
+	BatchSize int
 }
 
 func defaultOptions() ProducerOptions {
@@ -30,6 +34,7 @@ func defaultOptions() ProducerOptions {
 	}
 }
 
+// Producer represents a message queue producer
 type Producer struct {
 	db      *sqlx.DB
 	msgChan chan internal.Message
@@ -50,6 +55,7 @@ func newProducer(ctx context.Context, db *sqlx.DB, opts *ProducerOptions) (*Prod
 	return &p, nil
 }
 
+// Push pushes a message onto the queue
 func (p *Producer) Push(message []byte) {
 	p.msgChan <- internal.Message{Payload: message}
 }
