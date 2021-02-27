@@ -29,21 +29,12 @@ func TestPushMessageShouldSucceed_OneMessage(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
-	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), &ProducerOptions{MaxRetries: 0})
+	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), &ProducerOptions{BatchSize: 1, MaxRetries: 0})
 	require.NoError(t, err)
 
 	p.Push(m.Payload)
-
-	select {
-	case <-ctx.Done():
-		if err := mock.ExpectationsWereMet(); err != nil {
-			require.FailNowf(t, ctx.Err().Error(), "context timed-out")
-		}
-	default:
-		if err := mock.ExpectationsWereMet(); err == nil {
-			cancel()
-		}
-	}
+	time.Sleep(time.Millisecond)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 // TODO: fix this test
@@ -52,40 +43,27 @@ func TestPushMessageShouldSucceed_ThreeMessages(t *testing.T) {
 	mock.MatchExpectationsInOrder(false)
 	require.NoError(t, err)
 
-	messages := make([]internal.Message, 3)
+	messages := make([][]byte, 3)
 	for i := range messages {
-		messages[i].Payload = []byte("payload" + strconv.Itoa(i))
+		messages[i] = []byte("payload" + strconv.Itoa(i))
 	}
 
-	for i := range messages {
-		mock.
-			ExpectExec(
-				regexp.QuoteMeta(`INSERT INTO message (payload) VALUES (?)`),
-			).
-			WithArgs(messages[i].Payload).
-			WillReturnResult(sqlmock.NewResult(int64(i+1), 1))
-		t.Logf("expecting message with payload %s", string(messages[i].Payload))
-	}
+	mock.
+		ExpectExec(
+			regexp.QuoteMeta(`INSERT INTO message (payload) VALUES (?, ?, ?)`),
+		).
+		WithArgs(messages[0], messages[1], messages[2]).
+		WillReturnResult(sqlmock.NewResult(3, 3))
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
-	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), &ProducerOptions{MaxRetries: 0})
+	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), &ProducerOptions{BatchSize: 3, MaxRetries: 0})
 	require.NoError(t, err)
 
 	for _, m := range messages {
-		p.Push(m.Payload)
-		time.Sleep(time.Millisecond)
+		p.Push(m)
 	}
-
-	select {
-	case <-ctx.Done():
-		if err := mock.ExpectationsWereMet(); err != nil {
-			require.FailNowf(t, ctx.Err().Error(), "context timed-out")
-		}
-	default:
-		if err := mock.ExpectationsWereMet(); err == nil {
-			cancel()
-		}
-	}
+	time.Sleep(time.Millisecond)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
