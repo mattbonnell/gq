@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	messageCacheSize       = 100
+	messageBufferSize      = 100
 	pushBatchSize          = 1
 	defaultPushPeriod      = "50ms"
 	defaultMaxRetryPeriods = 1
@@ -65,7 +65,7 @@ func (p *Producer) Push(message []byte) {
 }
 
 func (p Producer) startPushingMessages(ctx context.Context, period time.Duration) {
-	cache := make([][]byte, 0, messageCacheSize)
+	buf := make([][]byte, 0, messageBufferSize)
 	ticker := time.NewTicker(period)
 	for {
 		select {
@@ -73,26 +73,26 @@ func (p Producer) startPushingMessages(ctx context.Context, period time.Duration
 			log.Debug().Err(ctx.Err()).Msg("stopping message pushing: context closed")
 			return
 		case m := <-p.msgChan:
-			cache = append(cache, m)
+			buf = append(buf, m)
 		case <-ticker.C:
-			if len(cache) == 0 {
+			if len(buf) == 0 {
 				continue
 			}
 			ctx, cancel := context.WithTimeout(ctx, period*time.Duration(p.opts.MaxRetryPeriods))
-			if err := backoff.Retry(func() error { return p.pushMessages(cache) }, backoff.WithContext(backoff.NewExponentialBackOff(), ctx)); err != nil {
+			if err := backoff.Retry(func() error { return p.pushMessages(buf) }, backoff.WithContext(backoff.NewExponentialBackOff(), ctx)); err != nil {
 				log.Err(err).Msg("error pushing messages")
 			}
 			cancel() // release ctx resources if timeout hasn't expired
-			cache = clear(cache)
+			buf = clear(buf)
 		}
 	}
 }
 
-func clear(cache [][]byte) [][]byte {
-	for i := range cache {
-		cache[i] = []byte{} // allow elements to be garbage-collected
+func clear(buffer [][]byte) [][]byte {
+	for i := range buffer {
+		buffer[i] = []byte{} // allow elements to be garbage-collected
 	}
-	return cache[:0]
+	return buffer[:0]
 }
 
 func (p Producer) pushMessages(messages [][]byte) error {
