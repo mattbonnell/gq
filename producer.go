@@ -3,32 +3,34 @@ package gq
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff"
 	"github.com/jmoiron/sqlx"
 	"github.com/rs/zerolog/log"
 )
 
 const (
-	messageCacheSize = 50
-	//TODO implement push batches
-	pushBatchSize     = 1
-	defaultMaxRetries = 3
+	messageBufferSize      = 100
+	pushBatchSize          = 1
+	defaultPushPeriod      = "50ms"
+	defaultMaxRetryPeriods = 1
 )
 
 // ProducerOptions represents the options which can be used to tailor producer behaviour
 type ProducerOptions struct {
-	// MaxRetries is the maximum number of times a message push will be retried (default: 3)
-	MaxRetries int
-	// BatchSize is the number of messages that should be batched before being pushed to the DB
+	// PushPeriod is duration of the period messages should be pushed at (default: 50ms).
 	// This can be tuned to achieve the desired throughput/latency tradeoff
-	BatchSize int
+	PushPeriod string
+	// MaxRetryPeriods is the maximum number of push periods to retry a batch of messages for before discarding them (default: 1)
+	MaxRetryPeriods int
 }
 
 func defaultOptions() ProducerOptions {
 	return ProducerOptions{
-		MaxRetries: defaultMaxRetries,
-		BatchSize:  pushBatchSize,
+		PushPeriod:      defaultPushPeriod,
+		MaxRetryPeriods: defaultMaxRetryPeriods,
 	}
 }
 
@@ -49,7 +51,11 @@ func newProducer(ctx context.Context, db *sqlx.DB, opts *ProducerOptions) (*Prod
 	} else {
 		p.opts = defaultOptions()
 	}
-	go p.startPushingMessages(ctx)
+	d, err := time.ParseDuration(p.opts.PushPeriod)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing push period: %s", err)
+	}
+	go p.startPushingMessages(ctx, d)
 	return &p, nil
 }
 
@@ -58,48 +64,55 @@ func (p *Producer) Push(message []byte) {
 	p.msgChan <- message
 }
 
-func (p Producer) startPushingMessages(ctx context.Context) {
-	cache := make([][]byte, 0, p.opts.BatchSize)
+func (p Producer) startPushingMessages(ctx context.Context, period time.Duration) {
+	buf := make([][]byte, 0, messageBufferSize)
+	ticker := time.NewTicker(period)
 	for {
 		select {
 		case <-ctx.Done():
 			log.Debug().Err(ctx.Err()).Msg("stopping message pushing: context closed")
 			return
-
 		case m := <-p.msgChan:
-			cache = append(cache, m)
-			if len(cache) < cap(cache) {
+			buf = append(buf, m)
+		case <-ticker.C:
+			if len(buf) == 0 {
 				continue
 			}
-			if err := backoff.Retry(func() error { return p.pushMessages(cache) }, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), uint64(p.opts.MaxRetries))); err != nil {
+			ctx, cancel := context.WithTimeout(ctx, period*time.Duration(p.opts.MaxRetryPeriods))
+			if err := backoff.Retry(func() error { return p.pushMessages(buf) }, backoff.WithContext(backoff.NewExponentialBackOff(), ctx)); err != nil {
 				log.Err(err).Msg("error pushing messages")
-				return
 			}
-			cache = make([][]byte, 0, cap(cache))
+			cancel() // release ctx resources if timeout hasn't expired
+			buf = clear(buf)
 		}
 	}
 }
 
-func (p Producer) pushMessages(messages [][]byte) error {
-	query, args, err := sqlx.In("INSERT INTO message (payload) VALUES (?)", messages)
-	if err != nil {
-		return fmt.Errorf("error formulating INSERT query: %s", err)
+func clear(buffer [][]byte) [][]byte {
+	for i := range buffer {
+		buffer[i] = []byte{} // allow elements to be garbage-collected
 	}
-	query = p.db.Rebind(query)
-	_, err = p.db.Exec(query, args...)
-	if err != nil {
-		return fmt.Errorf("error INSERTING messages: %s", err)
-	}
-	return nil
+	return buffer[:0]
 }
 
-func (p Producer) pushMessage(message []byte) error {
-	log.Debug().Msg("pushing message onto queue")
-	stmt := p.db.Rebind("INSERT INTO message (payload) VALUES (?)")
-	_, err := p.db.Exec(stmt, message)
-	if err != nil {
-		return fmt.Errorf("error inserting message: %s", err)
+func (p Producer) pushMessages(messages [][]byte) error {
+	log.Debug().Msgf("pushing %d messages onto queue", len(messages))
+	valuesListBuilder := strings.Builder{}
+	valuesListBuilder.Grow(len(messages) * len([]byte("(?), ")))
+	args := make([]interface{}, len(messages))
+	for i := range messages {
+		if i == 0 {
+			valuesListBuilder.WriteString("(?)")
+		} else {
+			valuesListBuilder.WriteString(", (?)")
+		}
+		args[i] = messages[i]
 	}
-	log.Debug().Msg("successfully pushed message onto queue")
+	query := fmt.Sprintf("INSERT INTO message (payload) VALUES %s", valuesListBuilder.String())
+	query = p.db.Rebind(query)
+	if _, err := p.db.Exec(query, args...); err != nil {
+		return fmt.Errorf("error INSERTING messages: %s", err)
+	}
+	log.Debug().Msg("successfully pushed messages onto queue")
 	return nil
 }

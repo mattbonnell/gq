@@ -70,24 +70,21 @@ func (c *Consumer) pullMessage(ctx context.Context, now time.Time) error {
 	// and avoid having to copy it
 	rows, err := tx.QueryxContext(ctx, query, now)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			log.Debug().Err(err).Msg("no messages to pull")
-			return err
-		}
-		e := fmt.Errorf("error pulling message: %s", err)
-		log.Debug().Err(e).Msg("error")
-		return e
+		log.Debug().Err(err).Msg("error pulling messages")
+		return err
 	}
 	defer rows.Close()
 	var m internal.Message
-	rows.Next()
-	if err := rows.Scan(&m.ID, &m.Payload, &m.Retries); err != nil {
-		e := fmt.Errorf("error scanning message: %s", err)
-		log.Debug().Err(e).Msg("error")
-		return e
+	if !rows.Next() {
+		log.Debug().Err(rows.Err()).Msg("error from query result")
+		return rows.Err()
 	}
-	if err := rows.Err(); err != nil {
-		log.Debug().Err(err).Msg("error from query result")
+	if err := rows.Scan(&m.ID, &m.Payload, &m.Retries); err != nil {
+		if err == sql.ErrNoRows {
+			log.Debug().Msgf("no messages in results")
+			return nil
+		}
+		log.Debug().Err(err).Msg("error scanning messages")
 		return err
 	}
 	log.Debug().Msgf("pulled message %d", m.ID)

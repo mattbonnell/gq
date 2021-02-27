@@ -5,11 +5,10 @@ go 1.14
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.0
 	github.com/brianvoe/gofakeit/v6 v6.2.0
-	github.com/bxcodec/faker/v3 v3.6.0
+	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/cenkalti/backoff/v4 v4.1.0
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/jmoiron/sqlx v1.3.1
-	github.com/mattn/go-sqlite3 v1.14.6
 	github.com/rs/zerolog v1.20.0
 	github.com/stretchr/testify v1.7.0
 )
