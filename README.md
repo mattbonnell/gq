@@ -9,6 +9,34 @@ It delivers a scalable message queue without needing to integrate and maintain a
 ## Docs
 Docs are available at [pkg.go.dev/github.com/mattbonnell/gq](https://pkg.go.dev/github.com/mattbonnell/gq)
 
+## Example
+```go
+db, err := sql.Open(databaseDriver, databaseDSN)
+if err != nil {
+	log.Fatal().Err(err).Msg("failed to open DB")
+}
+client, err := gq.NewClient(db, databaseDriver)
+if err != nil {
+	log.Fatal().Err(err).Msg("error creating new client")
+}
+producer, err := client.NewProducer(context.TODO(), nil)
+if err != nil {
+	log.Fatal().Err(err).Msg("error creating new producer")
+}
+
+consumer, err = client.NewConsumer(context.TODO(), func(message []byte) error {
+		// process message
+		return nil
+
+	}, nil)
+
+m := make([][]byte, numMessages)
+for i := range m {
+	m[i] = []byte(...) // serialized message
+	producer.Push(m[i])
+}
+```
+
 ## Benchmarking against Redis
 Results obtained using [my fork of mq_benchmark](github.com/mattbonnell/mq_benchmark)
 ### Throughput
