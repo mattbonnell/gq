@@ -32,16 +32,17 @@ func TestPullMessageShouldSucceed_OneMessage(t *testing.T) {
 	c, err := newConsumer(ctx, sqlx.NewDb(db, arbitraryDriverName), func(message []byte) error {
 		require.Equal(t, expectedPayload, message)
 		return nil
-	})
+	}, nil)
 
 	mock.ExpectBegin()
 
 	mock.
 		ExpectQuery(
-			regexp.QuoteMeta(`SELECT id, payload, retries FROM message WHERE ready_at <= ? ORDER BY ready_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED`),
+			regexp.QuoteMeta(`SELECT id, payload, retries FROM message WHERE ready_at <= ? ORDER BY ready_at ASC LIMIT ? FOR UPDATE SKIP LOCKED`),
 		).
 		WithArgs(
 			now,
+			c.opts.MaxBatchSize,
 		).
 		WillReturnRows(
 			sqlmock.NewRows([]string{"id", "payload", "retries"}).
@@ -61,6 +62,5 @@ func TestPullMessageShouldSucceed_OneMessage(t *testing.T) {
 
 	mock.ExpectCommit()
 
-	err = c.pullMessage(ctx, now)
-	require.NoError(t, err)
+	c.pullMessages(ctx, now)
 }
