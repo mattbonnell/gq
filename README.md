@@ -59,16 +59,16 @@ Results obtained using [my fork of mq_benchmark](github.com/mattbonnell/mq_bench
 ```
 ### Latency
 ```bash
-❯ go run main.go gq true 10000 10000
-2021/02/27 20:48:36 Begin gq test
-2021/02/27 20:48:36 Sent 10000 messages in 12.475000 ms
-2021/02/27 20:48:36 Sent 801603.187500 per second
-2021/02/27 20:48:36 Mean latency for 10000 messages: NaN ms
-2021/02/27 20:48:36 End gq test
 ❯ go run main.go redis true 10000 10000
 2021/02/27 20:48:49 Begin redis test
 2021/02/27 20:48:49 Sent 10000 messages in 66.870003 ms
 2021/02/27 20:48:49 Sent 149543.890625 per second
 2021/02/27 20:48:49 Mean latency for 10000 messages: 0.153254 ms
 2021/02/27 20:48:49 End redis test
+❯ go run main.go gq true 10000 10000
+2021/02/27 20:48:36 Begin gq test
+2021/02/27 20:48:36 Sent 10000 messages in 12.475000 ms
+2021/02/27 20:48:36 Sent 801603.187500 per second
+2021/02/27 20:48:36 Mean latency for 10000 messages: NaN ms
+2021/02/27 20:48:36 End gq test
 ```
