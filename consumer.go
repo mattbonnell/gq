@@ -17,8 +17,8 @@ const (
 	consumerIdUnassigned             = 0
 	processingMaxRetries             = 3
 	retryInitialBackoffPeriodSeconds = 2
-	defaultPullPeriod                = 5 * time.Millisecond
-	defaultMaxBatchSize              = 300
+	defaultPullPeriod                = 50 * time.Millisecond
+	defaultMaxBatchSize              = 400
 )
 
 // ConsumerOptions represents the options which can be used to tailor producer behaviour
