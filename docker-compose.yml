@@ -7,4 +7,11 @@ services:
       - MYSQL_DATABASE=gq
     ports:
       - "3306:3306"
+  postgres:
+    image: postgres:latest
+    environment:
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=gq
+    ports:
+      - "5433:5432"
 

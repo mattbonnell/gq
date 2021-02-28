@@ -14,9 +14,9 @@ func GetSchema(driverName string) ([]string, error) {
 	switch driverName {
 	case "mysql":
 		return mysql.Schema, nil
-	case "pq":
+	case "pg":
 		fallthrough
-	case "pqx":
+	case "pgx":
 		fallthrough
 	case "postgres":
 		return postgres.Schema, nil
