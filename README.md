@@ -4,42 +4,74 @@
 [![GitHub go.mod Go version of a Go module](https://img.shields.io/github/go-mod/go-version/mattbonnell/gq)](https://github.com/mattbonnell/gq)
 [![Go Report Card](https://goreportcard.com/badge/github.com/mattbonnell/gq)](https://goreportcard.com/report/github.com/mattbonnell/gq)
 
-gq is a Go package which implements a multi-producer, multi-consumer message queue ontop of a vendor-agnostic SQL storage backend.
-It delivers a scalable message queue without needing to integrate and maintain additional infrastructure to support it.
+gq is a multi-producer, multi-consumer message queue which can be backed your project's SQL database.
+Consumers and Producers are non-blocking and concurrent by default, and can be tuned to fit your use case.
+It delivers a scalable, performant message queue without needing to integrate and maintain dedicated infrastructure to support it.
 
-## Docs
-Docs are available at [pkg.go.dev/github.com/mattbonnell/gq](https://pkg.go.dev/github.com/mattbonnell/gq)
+## User Guide
+### Definitions
+- Message queue: A First In, First Out (FIFO) queue which can be pushed to and popped from by multiple agents simultaneously.
+- Client: The Client maintains the connection to the database, and sets up the required database tables if they don't yet exist
+- Message: A Message is a byte slice (`[]byte`). This allows for maximum flexibility, as you can marshal data of any type into a byte slice 
+using [proto](https://pkg.go.dev/google.golang.org/protobuf/proto#Marshal), [json](https://golang.org/pkg/encoding/json/#Marshal), or any other binary format.
+- Producer: Producers are used to push messages onto the queue through their `Push(message []byte)` method.
+- Consumer: Consumers pops messages from the queue and process them using a user-provided callback of the form `func process(message []byte) error`.
 
-## Example
+### Usage
+
+#### Creating a new Client
+To create a new Client, call `gq.NewClient(db *sql.DB, driverName string)`:
 ```go
-db, err := sql.Open(databaseDriver, databaseDSN)
-if err != nil {
-	log.Fatal().Err(err).Msg("failed to open DB")
-}
-client, err := gq.NewClient(db, databaseDriver)
-if err != nil {
-	log.Fatal().Err(err).Msg("error creating new client")
-}
-producer, err := client.NewProducer(context.TODO(), nil)
-if err != nil {
-	log.Fatal().Err(err).Msg("error creating new producer")
-}
-
-consumer, err = client.NewConsumer(context.TODO(), func(message []byte) error {
-		// process message
-		return nil
-
-	}, nil)
-
-m := make([][]byte, numMessages)
-for i := range m {
-	m[i] = []byte(...) // serialized message
-	producer.Push(m[i])
-}
+db, err := sql.Open("mysql", "user:password@...")
+client, err := gq.NewClient(db, "mysql")
 ```
 
+#### Creating a new Producer
+To create a new Producer, call `gq.Client.NewProducer(ctx context.Context, opts *gq.ProducerOptions)`:
+```go
+producer, err := client.NewProducer(ctx, nil)
+```
+#### Pushing messages
+To push a message, marshal your message and then pass it to the Producer's `Push` method. Here's an example using a Protobuf encoding:
+```go
+email := &pb.EmailMessage{
+	To: "receiver@example.com",
+	From: "sender@example.com",
+	Body: "..."
+}
+msg, err := proto.Marshal(email)
+producer.Push(msg)
+```
+`gq.Producer.Push` is non-blocking, making it safe to use in your request handlers. Behind the scenes, `Push` sends the message onto a channel and returns. A message-pushing
+goroutine which starts when the Producer is instantiated receives the message off the channel and pushes it onto the queue.
+
+
+#### Creating a new Consumer
+To create a new Consumer, call `gq.Client.NewConsumer(ctx context.Context, process func(message []byte) error, opts *gq.ConsumerOptions)`:
+```go
+sendEmail := func(message []byte) error {
+	email := &pb.EmailMessage{}
+	if err := proto.Unmarshal(message, email); err != nil {
+		return fmt.Errorf("Failed to parse email: %s", err)
+	}
+	if err := SendEmail(email); err != nil {
+		return fmt.Errorf("Failed to send email: %s", err)
+	}
+	return nil
+}
+consumer, err := client.NewConsumer(ctx, sendEmail, nil)
+```
+The Consumer will start asynchronously pulling and processing messages immediately. Messages which return error from the process function will be
+requeued and retried a configurable number of times (3 by default).
+
+### Documentation
+For detailed documentation, including more advanced Producer/Consumer configuration, refer to the [go-docs](pkg.go.dev/mattbonnell/gq).
+
+## Supported SQL DBs backends
+gq currently supports MySQL, Postgres, and CockroachDB.
+
 ## Benchmarking against Redis
-Results obtained using [my fork of mq_benchmark](github.com/mattbonnell/mq_benchmark)
+Results obtained using [mq_benchmark](github.com/mattbonnell/mq_benchmark)
 ### Throughput
 ```bash
 ❯ go run main.go redis false 10000 10000
