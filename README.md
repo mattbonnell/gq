@@ -67,7 +67,7 @@ The Consumer will start asynchronously pulling and processing messages immediate
 requeued and retried a configurable number of times (3 by default).
 
 ### Documentation
-For detailed documentation, including more advanced Producer/Consumer configuration, refer to the [go-docs](pkg.go.dev/mattbonnell/gq).
+For detailed documentation, including more advanced Producer/Consumer configuration, refer to the [go-docs](https://pkg.go.dev/mattbonnell/gq).
 
 ## Supported SQL DBs backends
 gq currently supports MySQL, Postgres, and CockroachDB.
