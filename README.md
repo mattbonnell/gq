@@ -31,6 +31,7 @@ To create a new Producer, call `gq.Client.NewProducer(ctx context.Context, opts 
 ```go
 producer, err := client.NewProducer(ctx, nil)
 ```
+Passing `nil` for the options will create the Producer with the default configuration.
 #### Pushing messages
 To push a message, marshal your message and then pass it to the Producer's `Push` method. Here's an example using a Protobuf encoding:
 ```go
@@ -61,6 +62,7 @@ sendEmail := func(message []byte) error {
 }
 consumer, err := client.NewConsumer(ctx, sendEmail, nil)
 ```
+Passing `nil` for the options will create the Consumer with the default configuration.
 The Consumer will start asynchronously pulling and processing messages immediately. Messages which return error from the process function will be
 requeued and retried a configurable number of times (3 by default).
 
