@@ -34,8 +34,8 @@ func NewClient(db *sql.DB, driverName string) (*Client, error) {
 }
 
 // NewConsumer creates a new gq Consumer. It begins pulling messages immediately, and passes each one to the supplied process function
-func (c Client) NewConsumer(ctx context.Context, process func(message []byte) error) (*Consumer, error) {
-	return newConsumer(ctx, c.db, process)
+func (c Client) NewConsumer(ctx context.Context, process ProcessFunc, opts *ConsumerOptions) (*Consumer, error) {
+	return newConsumer(ctx, c.db, process, opts)
 }
 
 // NewProducer creates a new gq Producer

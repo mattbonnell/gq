@@ -15,23 +15,23 @@ import (
 const (
 	messageBufferSize      = 100
 	pushBatchSize          = 1
-	defaultPushPeriod      = "50ms"
+	defaultPushPeriod      = time.Millisecond * 50
 	defaultMaxRetryPeriods = 1
 	maxBatchQuerySize      = (1 << 16) - 1
 )
 
 // ProducerOptions represents the options which can be used to tailor producer behaviour
 type ProducerOptions struct {
-	// PushPeriod is duration of the period messages should be pushed at (default: 50ms).
+	// PushPeriod is the period with which messages should be pushed (default: 50ms).
 	// This can be tuned to achieve the desired throughput/latency tradeoff
-	PushPeriod string
+	PushPeriod time.Duration
 	// MaxRetryPeriods is the maximum number of push periods to retry a batch of messages for before discarding them (default: 1)
 	MaxRetryPeriods int
 	// Concurrency is the number of concurrent goroutines to push messages from (default: num cpus)
 	Concurrency int
 }
 
-func defaultOptions() ProducerOptions {
+func defaultProducerOpts() ProducerOptions {
 	return ProducerOptions{
 		PushPeriod:      defaultPushPeriod,
 		MaxRetryPeriods: defaultMaxRetryPeriods,
@@ -50,20 +50,16 @@ func newProducer(ctx context.Context, db *sqlx.DB, opts *ProducerOptions) (*Prod
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("couldn't reach database: %s", err)
 	}
-	p := Producer{db: db, msgChan: make(chan []byte)}
+	p := &Producer{db: db, msgChan: make(chan []byte)}
 	if opts != nil {
 		p.opts = *opts
 	} else {
-		p.opts = defaultOptions()
+		p.opts = defaultProducerOpts()
 	}
-	d, err := time.ParseDuration(p.opts.PushPeriod)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing push period: %s", err)
+	for i := 0; i < p.opts.Concurrency; i++ {
+		go p.startPushingMessages(ctx)
 	}
-	for c := 0; c < p.opts.Concurrency; c++ {
-		go p.startPushingMessages(ctx, d)
-	}
-	return &p, nil
+	return p, nil
 }
 
 // Push pushes a message onto the queue
@@ -71,10 +67,10 @@ func (p *Producer) Push(message []byte) {
 	p.msgChan <- message
 }
 
-func (p Producer) startPushingMessages(ctx context.Context, period time.Duration) {
+func (p Producer) startPushingMessages(ctx context.Context) {
 	buf := make([][]byte, 0, messageBufferSize)
-	ticker := time.NewTicker(period)
-	retryTimeout := period * time.Duration(p.opts.MaxRetryPeriods)
+	ticker := time.NewTicker(p.opts.PushPeriod)
+	retryTimeout := p.opts.PushPeriod * time.Duration(p.opts.MaxRetryPeriods)
 	for {
 		select {
 		case <-ctx.Done():

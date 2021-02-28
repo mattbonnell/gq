@@ -29,7 +29,7 @@ func TestPushMessageShouldSucceed_OneMessage(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
-	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), &ProducerOptions{PushPeriod: "500ns", MaxRetryPeriods: 0, Concurrency: 1})
+	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), &ProducerOptions{PushPeriod: 500 * time.Nanosecond, MaxRetryPeriods: 0, Concurrency: 1})
 	require.NoError(t, err)
 
 	p.Push(m.Payload)
@@ -58,7 +58,7 @@ func TestPushMessageShouldSucceed_ThreeMessages(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
-	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), &ProducerOptions{PushPeriod: "1ms", MaxRetryPeriods: 0, Concurrency: 2})
+	p, err := newProducer(ctx, sqlx.NewDb(db, arbitraryDriverName), &ProducerOptions{PushPeriod: time.Millisecond, MaxRetryPeriods: 0, Concurrency: 2})
 	require.NoError(t, err)
 
 	for _, m := range messages {
