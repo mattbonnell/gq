@@ -28,6 +28,8 @@ type ConsumerOptions struct {
 	PullPeriod time.Duration
 	// MaxPullSize is the maximum number of messages to be pulled in one batch (default: 50)
 	MaxBatchSize int
+	// MaxProcessingRetries is the maximum number of times that a message will be requeued for re-processing after processing fails (default: 3)
+	MaxProcessingRetries int
 	// Concurrency is the number of concurrent goroutines to pull messages from (default: num cpus)
 	Concurrency int
 }
@@ -123,7 +125,7 @@ func (c *Consumer) pullMessages(ctx context.Context, now time.Time) {
 	}
 	rows.Close()
 	for _, m := range errMsgs {
-		if m.Retries < processingMaxRetries {
+		if int(m.Retries) < c.opts.MaxProcessingRetries {
 			query := c.db.Rebind("UPDATE message WHERE id = ? SET retries = ?, ready_at = ?")
 			numRetries := m.Retries + 1
 			backoffPeriodSeconds := retryInitialBackoffPeriodSeconds * numRetries

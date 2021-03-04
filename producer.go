@@ -16,7 +16,7 @@ const (
 	messageBufferSize      = 100
 	pushBatchSize          = 1
 	defaultPushPeriod      = time.Millisecond * 50
-	defaultMaxRetryPeriods = 1
+	defaultMaxRetryPeriods = 3
 	maxBatchQuerySize      = (1 << 16) - 1
 )
 
@@ -25,7 +25,7 @@ type ProducerOptions struct {
 	// PushPeriod is the period with which messages should be pushed (default: 50ms).
 	// This can be tuned to achieve the desired throughput/latency tradeoff
 	PushPeriod time.Duration
-	// MaxRetryPeriods is the maximum number of push periods to retry a batch of messages for before discarding them (default: 1)
+	// MaxRetryPeriods is the maximum number of push periods to retry a batch of messages for before discarding them (default: 3)
 	MaxRetryPeriods int
 	// Concurrency is the number of concurrent goroutines to push messages from (default: num cpus)
 	Concurrency int

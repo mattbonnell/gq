@@ -29,7 +29,7 @@ func main() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("error creating new client")
 	}
-	producer, err := client.NewProducer(context.TODO(), nil)
+	producer, err := client.NewProducer(context.TODO())
 	if err != nil {
 		log.Fatal().Err(err).Msg("error creating new producer")
 	}
@@ -44,7 +44,7 @@ func main() {
 				return nil
 
 			}
-		}(i), nil)
+		}(i))
 	}
 	if err != nil {
 		log.Fatal().Err(err).Msg("error creating new consumer")
