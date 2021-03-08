@@ -8,6 +8,8 @@ require (
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/go-sql-driver/mysql v1.5.0
 	github.com/jmoiron/sqlx v1.3.1
+	github.com/lib/pq v1.9.0
+	github.com/ory/dockertest/v3 v3.6.3
 	github.com/rs/zerolog v1.20.0
 	github.com/stretchr/testify v1.7.0
 )
