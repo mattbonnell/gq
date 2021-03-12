@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 	}
 
 	postgres = setupResource(pool, "postgres", "latest", []string{"POSTGRES_PASSWORD=secret", "POSTGRES_DB=gq"})
-	mysql = setupResource(pool, "mysql", "latest", []string{"MYSQL_ROOT_PASSWORD=secret"})
+	mysql = setupResource(pool, "mysql", "latest", []string{"MYSQL_ROOT_PASSWORD=secret", "MYSQL_DATABASE=gq"})
 
 	code := m.Run()
 
