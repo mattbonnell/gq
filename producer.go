@@ -3,7 +3,6 @@ package gq
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"strings"
 	"time"
 
@@ -27,7 +26,7 @@ type ProducerOptions struct {
 	PushPeriod time.Duration
 	// MaxRetryPeriods is the maximum number of push periods to retry a batch of messages for before discarding them (default: 3)
 	MaxRetryPeriods int
-	// Concurrency is the number of concurrent goroutines to push messages from (default: num cpus)
+	// Concurrency is the number of concurrent goroutines to push messages from (default: 1)
 	Concurrency int
 }
 
@@ -35,7 +34,7 @@ func defaultProducerOpts() ProducerOptions {
 	return ProducerOptions{
 		PushPeriod:      defaultPushPeriod,
 		MaxRetryPeriods: defaultMaxRetryPeriods,
-		Concurrency:     runtime.NumCPU(),
+		Concurrency:     1,
 	}
 }
 
@@ -47,9 +46,6 @@ type Producer struct {
 }
 
 func newProducer(ctx context.Context, db *sqlx.DB, opts *ProducerOptions) (*Producer, error) {
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("couldn't reach database: %s", err)
-	}
 	p := &Producer{db: db, msgChan: make(chan []byte)}
 	if opts != nil {
 		p.opts = *opts
@@ -74,7 +70,7 @@ func (p Producer) startPushingMessages(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Debug().Err(ctx.Err()).Msg("stopping message pushing: context closed")
+			log.Debug().Msgf("stopping message pushing: %s", ctx.Err())
 			return
 		case m := <-p.msgChan:
 			buf = append(buf, m)
