@@ -3,7 +3,6 @@ package gq
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -30,7 +29,7 @@ type ConsumerOptions struct {
 	MaxBatchSize int
 	// MaxProcessingRetries is the maximum number of times that a message will be requeued for re-processing after processing fails (default: 3)
 	MaxProcessingRetries int
-	// Concurrency is the number of concurrent goroutines to pull messages from (default: num cpus)
+	// Concurrency is the number of concurrent goroutines to pull messages from (default: 1)
 	Concurrency int
 }
 
@@ -38,7 +37,7 @@ func defaultConsumerOpts() ConsumerOptions {
 	return ConsumerOptions{
 		PullPeriod:   defaultPullPeriod,
 		MaxBatchSize: defaultMaxBatchSize,
-		Concurrency:  runtime.NumCPU(),
+		Concurrency:  1,
 	}
 }
 
@@ -53,12 +52,6 @@ type Consumer struct {
 }
 
 func newConsumer(ctx context.Context, db *sqlx.DB, process ProcessFunc, opts *ConsumerOptions) (*Consumer, error) {
-	log.Debug().Msg("pinging database")
-	if err := db.Ping(); err != nil {
-		e := fmt.Errorf("error pinging database: %s", err)
-		log.Debug().Err(e)
-		return nil, e
-	}
 	c := &Consumer{db: db, process: process}
 	if opts != nil {
 		c.opts = *opts
@@ -76,17 +69,17 @@ func (c *Consumer) startPullingMessages(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Debug().Err(ctx.Err()).Msg("stopping message processing: context closed")
+			log.Debug().Msgf("stopping message pulling: %s", ctx.Err())
 			return
 		case <-ticker.C:
-			c.pullMessages(ctx, time.Now().UTC())
+			c.pullMessages(time.Now().UTC())
 		}
 	}
 }
 
-func (c *Consumer) pullMessages(ctx context.Context, now time.Time) {
-	log.Debug().Msg("pulling new message")
-	tx, err := c.db.BeginTxx(ctx, nil)
+func (c *Consumer) pullMessages(now time.Time) {
+	log.Debug().Msg("pulling new messages")
+	tx, err := c.db.Beginx()
 	if err != nil {
 		e := fmt.Errorf("error beginning message pull transaction: %s", err)
 		log.Debug().Err(e)
@@ -96,7 +89,7 @@ func (c *Consumer) pullMessages(ctx context.Context, now time.Time) {
 	query := tx.Rebind("SELECT id, payload, retries FROM message WHERE ready_at <= ? ORDER BY ready_at ASC LIMIT ? FOR UPDATE SKIP LOCKED")
 	// use Query instead of QueryRow so that we can close the Rows after processing the message, thus allowing us to scan the payload into an sql.RawBytes
 	// and avoid having to copy it
-	rows, err := tx.QueryxContext(ctx, query, now, c.opts.MaxBatchSize)
+	rows, err := tx.Queryx(query, now, c.opts.MaxBatchSize)
 	if err != nil {
 		log.Debug().Err(err).Msg("error pulling messages")
 		return
@@ -106,10 +99,10 @@ func (c *Consumer) pullMessages(ctx context.Context, now time.Time) {
 	errMsgs := make([]internal.Message, 0, c.opts.MaxBatchSize)
 	successMsgIds := make([]int64, 0, c.opts.MaxBatchSize)
 	for rows.Next() {
-		log.Debug().Msgf("pulled message %d", m.ID)
 		if err := rows.Scan(&m.ID, &m.Payload, &m.Retries); err != nil {
 			log.Debug().Err(err).Msg("error scanning messages")
 		}
+		log.Debug().Msgf("pulled message %d", m.ID)
 		log.Debug().Msgf("processing message %d", m.ID)
 		if err := c.process([]byte(m.Payload)); err != nil {
 			log.Debug().Err(err).Msgf("error processing message %d", m.ID)
@@ -130,7 +123,7 @@ func (c *Consumer) pullMessages(ctx context.Context, now time.Time) {
 			numRetries := m.Retries + 1
 			backoffPeriodSeconds := retryInitialBackoffPeriodSeconds * numRetries
 			readyAt := time.Now().UTC().Add(time.Second * time.Duration(backoffPeriodSeconds))
-			res, err := tx.ExecContext(ctx, query, m.ID, numRetries, readyAt)
+			res, err := tx.Exec(query, m.ID, numRetries, readyAt)
 			if err != nil {
 				e := fmt.Errorf("error setting next ready_at: %s", err)
 				log.Debug().Err(e).Msg("error")
@@ -142,17 +135,20 @@ func (c *Consumer) pullMessages(ctx context.Context, now time.Time) {
 			}
 		}
 	}
-	log.Debug().Msg("deleting successfully processed messages from the queue")
-	query, args, err := sqlx.In("DELETE FROM MESSAGE WHERE id in (?)", successMsgIds)
-	if err != nil {
-		log.Debug().Err(err).Msg("error formulating delete query")
-		return
-	}
-	query = tx.Rebind(query)
-	_, err = tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		log.Debug().Err(err).Msg("error deleting messages from queue")
-		return
+	if len(successMsgIds) > 0 {
+		log.Debug().Msg("deleting successfully processed messages from the queue")
+		query, args, err := sqlx.In("DELETE FROM message WHERE id in (?)", successMsgIds)
+		if err != nil {
+			log.Debug().Err(err).Msg("error formulating delete query")
+			return
+		}
+		query = tx.Rebind(query)
+		_, err = tx.Exec(query, args...)
+		if err != nil {
+			log.Debug().Err(err).Msg("error deleting messages from queue")
+			return
+		}
+
 	}
 	if err := tx.Commit(); err != nil {
 		log.Debug().Msg("error committing tx")
